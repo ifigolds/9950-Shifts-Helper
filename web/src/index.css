@@ -1,6 +1,7 @@
 :root {
-  color-scheme: light;
   font-family: Arial, sans-serif;
+  color: #17212b;
+  background: #eef3f9;
 }
 
 * {
@@ -10,7 +11,7 @@
 body {
   margin: 0;
   direction: rtl;
-  background: #f3f6fb;
+  background: #eef3f9;
   color: #17212b;
 }
 
@@ -27,15 +28,27 @@ textarea {
 }
 
 .card {
-  background: white;
-  border-radius: 22px;
-  padding: 20px;
+  background: #ffffff;
+  border-radius: 26px;
+  padding: 22px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   margin-bottom: 16px;
 }
 
 .hero {
   text-align: center;
+}
+
+.hero h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.hero p {
+  margin: 0;
+  color: #5f6b7a;
+  font-size: 16px;
 }
 
 .center {
@@ -45,12 +58,13 @@ textarea {
 .subtitle {
   color: #6b7280;
   margin-bottom: 8px;
+  font-size: 14px;
 }
 
 .actions {
   display: flex;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .actions.wrap {
@@ -59,20 +73,22 @@ textarea {
 
 button {
   border: none;
-  border-radius: 14px;
-  padding: 12px 16px;
+  border-radius: 16px;
+  padding: 14px 18px;
   cursor: pointer;
-  background: #2aabee;
+  background: #35a8e0;
   color: white;
   transition: 0.2s ease;
+  min-height: 48px;
+  font-weight: 700;
 }
 
 button:hover {
-  opacity: 0.92;
+  opacity: 0.93;
 }
 
 button.secondary {
-  background: #e9eef5;
+  background: #e7ebf1;
   color: #17212b;
 }
 
@@ -88,22 +104,32 @@ button.danger {
   background: #ef4444;
 }
 
-textarea {
+textarea,
+input {
   width: 100%;
+  padding: 13px 14px;
+  border-radius: 16px;
+  border: 1px solid #d7dee8;
+  margin-top: 8px;
+  background: #fff;
+}
+
+textarea {
   min-height: 110px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid #d8dee8;
-  margin-top: 10px;
   resize: vertical;
 }
 
 .info-block {
   background: #f8fafc;
   border: 1px solid #e6ebf2;
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 14px;
   margin-top: 12px;
+}
+
+.info-block strong {
+  display: block;
+  margin-bottom: 6px;
 }
 
 .error-card {
@@ -113,7 +139,7 @@ textarea {
 
 .month-title {
   margin-top: 18px;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   font-size: 28px;
 }
 
@@ -128,12 +154,13 @@ textarea {
   font-weight: 700;
   color: #6b7280;
   padding: 8px 0;
+  font-size: 13px;
 }
 
 .day-cell {
-  min-height: 80px;
+  min-height: 82px;
   border: 1px solid #e7edf5;
-  border-radius: 16px;
+  border-radius: 18px;
   background: #fff;
   padding: 8px;
   display: flex;
@@ -144,11 +171,11 @@ textarea {
 }
 
 .day-cell.muted {
-  opacity: 0.4;
+  opacity: 0.35;
 }
 
 .day-cell.today {
-  outline: 2px solid rgba(42, 171, 238, 0.35);
+  outline: 2px solid rgba(53, 168, 224, 0.35);
 }
 
 .day-cell.selected {
@@ -192,6 +219,10 @@ textarea {
   padding: 16px;
 }
 
+.shift-card h3 {
+  margin: 0 0 8px;
+}
+
 .small-stats {
   display: flex;
   gap: 8px;
@@ -217,6 +248,12 @@ textarea {
   color: #991b1b;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
 @media (max-width: 700px) {
   .screen {
     padding: 12px;
@@ -239,5 +276,9 @@ textarea {
   .green-number,
   .red-number {
     font-size: 16px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
   }
 }

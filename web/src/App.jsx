@@ -2,10 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 
 const API_BASE = 'https://nine950-backend.onrender.com'
 
-function escapeHtml(str) {
-  return String(str ?? '')
-}
-
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
   if (status === 'no') return 'לא מגיע'
@@ -44,6 +40,15 @@ export default function App() {
   const [adminShifts, setAdminShifts] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(formatDateKey(new Date()))
+  const [showCreateShift, setShowCreateShift] = useState(false)
+
+  const [newShift, setNewShift] = useState({
+    title: '',
+    shift_date: formatDateKey(new Date()),
+    start_time: '',
+    end_time: '',
+    notes: '',
+  })
 
   async function api(path, options = {}) {
     const tg = window.Telegram?.WebApp
@@ -97,7 +102,6 @@ export default function App() {
           tg.ready()
           tg.expand()
         }
-
         await loadProfile()
       } catch (err) {
         setError(err.message || 'שגיאה')
@@ -153,6 +157,28 @@ export default function App() {
     }
   }
 
+  async function createShift() {
+    try {
+      setError('')
+      await api('/admin/shifts', {
+        method: 'POST',
+        body: JSON.stringify(newShift),
+      })
+
+      setShowCreateShift(false)
+      setNewShift({
+        title: '',
+        shift_date: formatDateKey(new Date()),
+        start_time: '',
+        end_time: '',
+        notes: '',
+      })
+      await loadAdminShifts()
+    } catch (err) {
+      setError(err.message || 'שגיאה ביצירת משמרת')
+    }
+  }
+
   function getShiftsByDateKey(dateKey) {
     return adminShifts.filter((shift) => shift.shift_date === dateKey)
   }
@@ -178,7 +204,6 @@ export default function App() {
     return {
       fullyConfirmed,
       withProblems,
-      total: shifts.length,
     }
   }
 
@@ -277,7 +302,7 @@ export default function App() {
 
       {mode === 'select' && (
         <div className="card center">
-          <h2>ברוך הבא {escapeHtml(profile.user.first_name || '')}</h2>
+          <h2>ברוך הבא {profile.user.first_name || ''}</h2>
           <p>נא לבחור סוג כניסה</p>
 
           <div className="actions">
@@ -300,16 +325,16 @@ export default function App() {
           ) : (
             <>
               <div className="subtitle">כניסה רגילה</div>
-              <h2>{escapeHtml(userShift.title)}</h2>
+              <h2>{userShift.title}</h2>
 
               <div className="info-block">
                 <strong>תאריך</strong>
-                <div>{escapeHtml(userShift.shift_date)}</div>
+                <div>{userShift.shift_date}</div>
               </div>
 
               <div className="info-block">
                 <strong>שעה</strong>
-                <div>{escapeHtml(userShift.start_time)} - {escapeHtml(userShift.end_time)}</div>
+                <div>{userShift.start_time} - {userShift.end_time}</div>
               </div>
 
               <div className="info-block">
@@ -320,14 +345,14 @@ export default function App() {
               {userShift.comment && (
                 <div className="info-block">
                   <strong>סיבה</strong>
-                  <div>{escapeHtml(userShift.comment)}</div>
+                  <div>{userShift.comment}</div>
                 </div>
               )}
 
               {userShift.notes && (
                 <div className="info-block">
                   <strong>הערות</strong>
-                  <div>{escapeHtml(userShift.notes)}</div>
+                  <div>{userShift.notes}</div>
                 </div>
               )}
 
@@ -366,38 +391,65 @@ export default function App() {
             <h2>יומן משמרות</h2>
 
             <div className="actions wrap">
-              <button
-                className="secondary"
-                onClick={() => {
-                  setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))
-                }}
-              >
+              <button className="secondary" onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}>
                 חודש קודם
               </button>
-
-              <button
-                className="secondary"
-                onClick={() => {
-                  const today = new Date()
-                  setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                  setSelectedDate(formatDateKey(today))
-                }}
-              >
+              <button className="secondary" onClick={() => {
+                const today = new Date()
+                setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
+                setSelectedDate(formatDateKey(today))
+              }}>
                 היום
               </button>
-
-              <button
-                className="secondary"
-                onClick={() => {
-                  setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))
-                }}
-              >
+              <button className="secondary" onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}>
                 חודש הבא
               </button>
-
-              <button onClick={loadAdminShifts}>רענון</button>
+              <button onClick={() => setShowCreateShift(!showCreateShift)}>יצירת משמרת חדשה</button>
+              <button className="secondary" onClick={loadAdminShifts}>רענון</button>
               <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
             </div>
+
+            {showCreateShift && (
+              <div className="info-block">
+                <strong>יצירת משמרת חדשה</strong>
+
+                <input
+                  placeholder="שם המשמרת"
+                  value={newShift.title}
+                  onChange={(e) => setNewShift({ ...newShift, title: e.target.value })}
+                />
+
+                <div className="form-grid">
+                  <input
+                    type="date"
+                    value={newShift.shift_date}
+                    onChange={(e) => setNewShift({ ...newShift, shift_date: e.target.value })}
+                  />
+                  <input
+                    type="time"
+                    value={newShift.start_time}
+                    onChange={(e) => setNewShift({ ...newShift, start_time: e.target.value })}
+                  />
+                </div>
+
+                <input
+                  type="time"
+                  value={newShift.end_time}
+                  onChange={(e) => setNewShift({ ...newShift, end_time: e.target.value })}
+                />
+
+                <textarea
+                  placeholder="הערות"
+                  value={newShift.notes}
+                  onChange={(e) => setNewShift({ ...newShift, notes: e.target.value })}
+                />
+
+                <div className="actions">
+                  <button onClick={createShift}>שמור</button>
+                  <button className="secondary" onClick={() => setShowCreateShift(false)}>ביטול</button>
+                </div>
+              </div>
+            )}
 
             <h3 className="month-title">{formatMonthTitle(calendarDate)}</h3>
 
@@ -420,12 +472,8 @@ export default function App() {
                   >
                     <div className="day-number">{dateObj.getDate()}</div>
                     <div className="day-stats">
-                      {dayStats.fullyConfirmed > 0 ? (
-                        <span className="green-number">{dayStats.fullyConfirmed}</span>
-                      ) : <span />}
-                      {dayStats.withProblems > 0 ? (
-                        <span className="red-number">{dayStats.withProblems}</span>
-                      ) : null}
+                      {dayStats.fullyConfirmed > 0 ? <span className="green-number">{dayStats.fullyConfirmed}</span> : <span />}
+                      {dayStats.withProblems > 0 ? <span className="red-number">{dayStats.withProblems}</span> : null}
                     </div>
                   </button>
                 )
@@ -442,9 +490,9 @@ export default function App() {
               <div className="shift-list">
                 {selectedDayShifts.map((shift) => (
                   <div key={shift.id} className="shift-card">
-                    <h3>{escapeHtml(shift.title)}</h3>
-                    <p>{escapeHtml(shift.start_time)} - {escapeHtml(shift.end_time)}</p>
-                    {shift.notes ? <p>{escapeHtml(shift.notes)}</p> : null}
+                    <h3>{shift.title}</h3>
+                    <p>{shift.start_time} - {shift.end_time}</p>
+                    {shift.notes ? <p>{shift.notes}</p> : null}
 
                     <div className="small-stats">
                       <span className="badge ok">אושר: {shift.yes_count || 0}</span>
