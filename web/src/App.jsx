@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
+const API_BASE = 'https://nine950-backend.onrender.com'
+
 function escapeHtml(str) {
   return String(str ?? '')
 }
@@ -45,13 +47,9 @@ export default function App() {
 
   async function api(path, options = {}) {
     const tg = window.Telegram?.WebApp
+    const initData = tg?.initData || 'debug_user=1933391248'
 
-// 👇 если нет Telegram — используем тестовый ID
-const initData = tg?.initData || 'debug_user=1933391248'
-
-    coconst API_BASE = 'https://ТВОЙ-БЭКЕНД.onrender.com'
-
-const res = await fetch(API_BASE + path, {nst res = await fetch(path, {
+    const res = await fetch(API_BASE + path, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -59,11 +57,13 @@ const res = await fetch(API_BASE + path, {nst res = await fetch(path, {
       },
     })
 
+    const text = await res.text()
+
     let data
     try {
-      data = await res.json()
+      data = JSON.parse(text)
     } catch {
-      data = { error: 'תגובה לא תקינה מהשרת' }
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`)
     }
 
     if (!res.ok) {
@@ -366,34 +366,43 @@ const res = await fetch(API_BASE + path, {nst res = await fetch(path, {
             <h2>יומן משמרות</h2>
 
             <div className="actions wrap">
-              <button className="secondary" onClick={() => {
-                setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))
-              }}>
+              <button
+                className="secondary"
+                onClick={() => {
+                  setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))
+                }}
+              >
                 חודש קודם
               </button>
 
-              <button className="secondary" onClick={() => {
-                const today = new Date()
-                setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                setSelectedDate(formatDateKey(today))
-              }}>
+              <button
+                className="secondary"
+                onClick={() => {
+                  const today = new Date()
+                  setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
+                  setSelectedDate(formatDateKey(today))
+                }}
+              >
                 היום
               </button>
 
-              <button className="secondary" onClick={() => {
-                setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))
-              }}>
+              <button
+                className="secondary"
+                onClick={() => {
+                  setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))
+                }}
+              >
                 חודש הבא
               </button>
 
-              <button onClick={loadAdmin}>רענון</button>
+              <button onClick={loadAdminShifts}>רענון</button>
               <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
             </div>
 
             <h3 className="month-title">{formatMonthTitle(calendarDate)}</h3>
 
             <div className="calendar-grid">
-              {['ב׳','ג׳','ד׳','ה׳','ו׳','ש׳','א׳'].map((day) => (
+              {['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳'].map((day) => (
                 <div key={day} className="weekday">{day}</div>
               ))}
 
@@ -439,7 +448,9 @@ const res = await fetch(API_BASE + path, {nst res = await fetch(path, {
 
                     <div className="small-stats">
                       <span className="badge ok">אושר: {shift.yes_count || 0}</span>
-                      <span className="badge bad">בעיה: {(shift.no_count || 0) + (shift.pending_count || 0) + (shift.maybe_count || 0)}</span>
+                      <span className="badge bad">
+                        בעיה: {(shift.no_count || 0) + (shift.pending_count || 0) + (shift.maybe_count || 0)}
+                      </span>
                     </div>
                   </div>
                 ))}
