@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "start": "node server/app.js",
-  "dev": "nodemon server/app.js",
-  "postinstall": "npm rebuild sqlite3 --build-from-source"
-},
+    "start": "node server/app.js",
+    "dev": "nodemon server/app.js",
+    "postinstall": "npm rebuild sqlite3 --build-from-source"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",

@@ -10,7 +10,15 @@ const { initDb } = require('./database');
 const authRoutes = require('./routes/auth');
 const meRoutes = require('./routes/me');
 
-const app = express();
+const app = express()
+app.use(cors({
+  origin: [
+    'https://9950-shifts-helper.vercel.app',
+    'http://localhost:5173'
+  ]
+}));
+
+app.use(express.json());
 
 initDb();
 
