@@ -4,6 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const adminRoutes = require('./routes/admin');
+const cors = require('cors')
 
 const { initDb } = require('./database');
 
