@@ -1,3 +1,13 @@
+const initData = req.headers['x-telegram-init-data']
+
+// 🔥 DEBUG режим
+if (initData && initData.startsWith('debug_user=')) {
+  const telegramId = initData.replace('debug_user=', '')
+
+  req.telegramUser = { id: telegramId }
+
+  return next()
+}
 const { db } = require('../database');
 const { validateTelegramInitData } = require('../telegramAuth');
 
