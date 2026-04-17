@@ -27,6 +27,16 @@ function isSameDay(dateA, dateB) {
   return formatDateKey(dateA) === formatDateKey(dateB)
 }
 
+function emptyShiftForm() {
+  return {
+    title: '',
+    shift_date: formatDateKey(new Date()),
+    start_time: '',
+    end_time: '',
+    notes: '',
+  }
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -40,15 +50,19 @@ export default function App() {
   const [adminShifts, setAdminShifts] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(formatDateKey(new Date()))
-  const [showCreateShift, setShowCreateShift] = useState(false)
 
-  const [newShift, setNewShift] = useState({
-    title: '',
-    shift_date: formatDateKey(new Date()),
-    start_time: '',
-    end_time: '',
-    notes: '',
-  })
+  const [showCreateShift, setShowCreateShift] = useState(false)
+  const [newShift, setNewShift] = useState(emptyShiftForm())
+
+  const [editingShiftId, setEditingShiftId] = useState(null)
+  const [editShift, setEditShift] = useState(emptyShiftForm())
+
+  const [selectedShiftDetails, setSelectedShiftDetails] = useState(null)
+  const [selectedShiftId, setSelectedShiftId] = useState(null)
+
+  const [assignShiftId, setAssignShiftId] = useState(null)
+  const [assignableUsers, setAssignableUsers] = useState([])
+  const [selectedUserIds, setSelectedUserIds] = useState([])
 
   async function api(path, options = {}) {
     const tg = window.Telegram?.WebApp
@@ -94,6 +108,19 @@ export default function App() {
     setAdminShifts(data.shifts || [])
   }
 
+  async function loadShiftDetails(shiftId) {
+    const data = await api(`/admin/shifts/${shiftId}`)
+    setSelectedShiftDetails(data.people || [])
+    setSelectedShiftId(shiftId)
+  }
+
+  async function loadAssignableUsers(shiftId) {
+    const data = await api('/admin/users')
+    setAssignableUsers(data.users || [])
+    setAssignShiftId(shiftId)
+    setSelectedUserIds([])
+  }
+
   useEffect(() => {
     async function init() {
       try {
@@ -116,6 +143,10 @@ export default function App() {
   async function enterUserMode() {
     try {
       setError('')
+      setSelectedShiftDetails(null)
+      setAssignShiftId(null)
+      setEditingShiftId(null)
+      setShowCreateShift(false)
       await loadUserShift()
       setMode('user')
     } catch (err) {
@@ -130,6 +161,10 @@ export default function App() {
         throw new Error('אין לך הרשאת מנהל')
       }
       await loadAdminShifts()
+      setSelectedShiftDetails(null)
+      setAssignShiftId(null)
+      setEditingShiftId(null)
+      setShowCreateShift(false)
       setMode('admin')
     } catch (err) {
       setError(err.message || 'שגיאה בטעינת אזור מנהל')
@@ -140,6 +175,7 @@ export default function App() {
     if (!userShift) return
 
     try {
+      setError('')
       await api('/me/shift-response', {
         method: 'POST',
         body: JSON.stringify({
@@ -166,16 +202,101 @@ export default function App() {
       })
 
       setShowCreateShift(false)
-      setNewShift({
-        title: '',
-        shift_date: formatDateKey(new Date()),
-        start_time: '',
-        end_time: '',
-        notes: '',
-      })
+      setNewShift(emptyShiftForm())
       await loadAdminShifts()
+      if (newShift.shift_date) {
+        const [y, m] = newShift.shift_date.split('-').map(Number)
+        setCalendarDate(new Date(y, m - 1, 1))
+        setSelectedDate(newShift.shift_date)
+      }
     } catch (err) {
       setError(err.message || 'שגיאה ביצירת משמרת')
+    }
+  }
+
+  function startEditShift(shift) {
+    setEditingShiftId(shift.id)
+    setEditShift({
+      title: shift.title || '',
+      shift_date: shift.shift_date || formatDateKey(new Date()),
+      start_time: shift.start_time || '',
+      end_time: shift.end_time || '',
+      notes: shift.notes || '',
+    })
+    setShowCreateShift(false)
+    setSelectedShiftDetails(null)
+    setAssignShiftId(null)
+  }
+
+  async function saveEditShift() {
+    try {
+      setError('')
+      await api(`/admin/shifts/${editingShiftId}`, {
+        method: 'PUT',
+        body: JSON.stringify(editShift),
+      })
+
+      setEditingShiftId(null)
+      setEditShift(emptyShiftForm())
+      await loadAdminShifts()
+      if (editShift.shift_date) {
+        const [y, m] = editShift.shift_date.split('-').map(Number)
+        setCalendarDate(new Date(y, m - 1, 1))
+        setSelectedDate(editShift.shift_date)
+      }
+    } catch (err) {
+      setError(err.message || 'שגיאה בעדכון משמרת')
+    }
+  }
+
+  async function deleteShift(shiftId) {
+    const ok = window.confirm('למחוק את המשמרת?')
+    if (!ok) return
+
+    try {
+      setError('')
+      await api(`/admin/shifts/${shiftId}`, {
+        method: 'DELETE',
+      })
+
+      if (selectedShiftId === shiftId) {
+        setSelectedShiftId(null)
+        setSelectedShiftDetails(null)
+      }
+      if (editingShiftId === shiftId) {
+        setEditingShiftId(null)
+      }
+      await loadAdminShifts()
+    } catch (err) {
+      setError(err.message || 'שגיאה במחיקת משמרת')
+    }
+  }
+
+  function toggleUserSelection(userId) {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    )
+  }
+
+  async function assignUsersToShift() {
+    try {
+      setError('')
+      await api(`/admin/shifts/${assignShiftId}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({
+          user_ids: selectedUserIds,
+        }),
+      })
+
+      setAssignShiftId(null)
+      setAssignableUsers([])
+      setSelectedUserIds([])
+      await loadAdminShifts()
+      await loadShiftDetails(assignShiftId)
+    } catch (err) {
+      setError(err.message || 'שגיאה בשיוך משתמשים')
     }
   }
 
@@ -391,20 +512,40 @@ export default function App() {
             <h2>יומן משמרות</h2>
 
             <div className="actions wrap">
-              <button className="secondary" onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}>
+              <button
+                className="secondary"
+                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+              >
                 חודש קודם
               </button>
-              <button className="secondary" onClick={() => {
-                const today = new Date()
-                setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                setSelectedDate(formatDateKey(today))
-              }}>
+
+              <button
+                className="secondary"
+                onClick={() => {
+                  const today = new Date()
+                  setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
+                  setSelectedDate(formatDateKey(today))
+                }}
+              >
                 היום
               </button>
-              <button className="secondary" onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}>
+
+              <button
+                className="secondary"
+                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+              >
                 חודש הבא
               </button>
-              <button onClick={() => setShowCreateShift(!showCreateShift)}>יצירת משמרת חדשה</button>
+
+              <button onClick={() => {
+                setShowCreateShift(!showCreateShift)
+                setEditingShiftId(null)
+                setAssignShiftId(null)
+                setSelectedShiftDetails(null)
+              }}>
+                יצירת משמרת חדשה
+              </button>
+
               <button className="secondary" onClick={loadAdminShifts}>רענון</button>
               <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
             </div>
@@ -447,6 +588,48 @@ export default function App() {
                 <div className="actions">
                   <button onClick={createShift}>שמור</button>
                   <button className="secondary" onClick={() => setShowCreateShift(false)}>ביטול</button>
+                </div>
+              </div>
+            )}
+
+            {editingShiftId && (
+              <div className="info-block">
+                <strong>עריכת משמרת</strong>
+
+                <input
+                  placeholder="שם המשמרת"
+                  value={editShift.title}
+                  onChange={(e) => setEditShift({ ...editShift, title: e.target.value })}
+                />
+
+                <div className="form-grid">
+                  <input
+                    type="date"
+                    value={editShift.shift_date}
+                    onChange={(e) => setEditShift({ ...editShift, shift_date: e.target.value })}
+                  />
+                  <input
+                    type="time"
+                    value={editShift.start_time}
+                    onChange={(e) => setEditShift({ ...editShift, start_time: e.target.value })}
+                  />
+                </div>
+
+                <input
+                  type="time"
+                  value={editShift.end_time}
+                  onChange={(e) => setEditShift({ ...editShift, end_time: e.target.value })}
+                />
+
+                <textarea
+                  placeholder="הערות"
+                  value={editShift.notes}
+                  onChange={(e) => setEditShift({ ...editShift, notes: e.target.value })}
+                />
+
+                <div className="actions">
+                  <button onClick={saveEditShift}>שמור שינויים</button>
+                  <button className="secondary" onClick={() => setEditingShiftId(null)}>ביטול</button>
                 </div>
               </div>
             )}
@@ -500,11 +683,71 @@ export default function App() {
                         בעיה: {(shift.no_count || 0) + (shift.pending_count || 0) + (shift.maybe_count || 0)}
                       </span>
                     </div>
+
+                    <div className="actions wrap">
+                      <button onClick={() => loadShiftDetails(shift.id)}>פתח</button>
+                      <button className="secondary" onClick={() => loadAssignableUsers(shift.id)}>שייך אנשים</button>
+                      <button className="secondary" onClick={() => startEditShift(shift)}>ערוך</button>
+                      <button className="danger" onClick={() => deleteShift(shift.id)}>מחק</button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {selectedShiftId && (
+            <div className="card">
+              <h2>אנשים במשמרת</h2>
+
+              {!selectedShiftDetails || selectedShiftDetails.length === 0 ? (
+                <p>אין אנשים משויכים למשמרת הזאת</p>
+              ) : (
+                <div className="shift-list">
+                  {selectedShiftDetails.map((person, index) => (
+                    <div key={index} className="shift-card">
+                      <h3>{person.first_name} {person.last_name}</h3>
+                      <p>דרגה: {person.rank || '-'}</p>
+                      <p>סוג שירות: {person.service_type || '-'}</p>
+                      <p>סטטוס: {statusText(person.status)}</p>
+                      {person.comment ? <p>סיבה: {person.comment}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {assignShiftId && (
+            <div className="card">
+              <h2>שיוך אנשים למשמרת</h2>
+
+              {assignableUsers.length === 0 ? (
+                <p>אין משתמשים זמינים</p>
+              ) : (
+                <div className="shift-list">
+                  {assignableUsers.map((user) => (
+                    <label key={user.id} className="shift-card" style={{ display: 'block', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => toggleUserSelection(user.id)}
+                        style={{ width: 'auto', marginLeft: 8 }}
+                      />
+                      <strong>{user.first_name} {user.last_name}</strong>
+                      <p>דרגה: {user.rank || '-'}</p>
+                      <p>סוג שירות: {user.service_type || '-'}</p>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <div className="actions">
+                <button onClick={assignUsersToShift}>שמור שיוך</button>
+                <button className="secondary" onClick={() => setAssignShiftId(null)}>ביטול</button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
