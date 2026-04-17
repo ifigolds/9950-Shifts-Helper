@@ -49,7 +49,9 @@ export default function App() {
 // 👇 если нет Telegram — используем тестовый ID
 const initData = tg?.initData || 'debug_user=1933391248'
 
-    const res = await fetch(path, {
+    coconst API_BASE = 'https://ТВОЙ-БЭКЕНД.onrender.com'
+
+const res = await fetch(API_BASE + path, {nst res = await fetch(path, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
