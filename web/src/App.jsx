@@ -42,6 +42,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [profile, setProfile] = useState(null)
   const [mode, setMode] = useState('select')
+  const [dayPanelOpen, setDayPanelOpen] = useState(false)
 
   const [userShift, setUserShift] = useState(null)
   const [noReasonOpen, setNoReasonOpen] = useState(false)
@@ -155,21 +156,25 @@ export default function App() {
   }
 
   async function enterAdminMode() {
-    try {
-      setError('')
-      if (!profile?.user || profile.user.role !== 'admin') {
-        throw new Error('אין לך הרשאת מנהל')
-      }
-      await loadAdminShifts()
-      setSelectedShiftDetails(null)
-      setAssignShiftId(null)
-      setEditingShiftId(null)
-      setShowCreateShift(false)
-      setMode('admin')
-    } catch (err) {
-      setError(err.message || 'שגיאה בטעינת אזור מנהל')
+  try {
+    setError('')
+    if (!profile?.user || profile.user.role !== 'admin') {
+      throw new Error('אין לך הרשאת מנהל')
     }
+
+    await loadAdminShifts()
+
+    setSelectedShiftDetails(null)
+    setAssignShiftId(null)
+    setEditingShiftId(null)
+    setShowCreateShift(false)
+    setDayPanelOpen(false)
+
+    setMode('admin')
+  } catch (err) {
+    setError(err.message || 'שגיאה בטעינת אזור מנהל')
   }
+}
 
   async function respond(status, comment = '') {
     if (!userShift) return
@@ -519,85 +524,41 @@ export default function App() {
             <h2>יומן משמרות</h2>
 
             <div className="actions wrap">
-              <button
-                className="secondary"
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-              >
-                חודש קודם
-              </button>
+  <button
+    className="secondary"
+    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+  >
+    חודש קודם
+  </button>
 
-              <button
-                className="secondary"
-                onClick={() => {
-                  const today = new Date()
-                  setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                  setSelectedDate(formatDateKey(today))
-                }}
-              >
-                היום
-              </button>
+  <button
+    className="secondary"
+    onClick={() => {
+      const today = new Date()
+      setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
+      setSelectedDate(formatDateKey(today))
+      setDayPanelOpen(true)
+      setShowCreateShift(false)
+      setEditingShiftId(null)
+      setAssignShiftId(null)
+      setSelectedShiftDetails(null)
+    }}
+  >
+    היום
+  </button>
 
-              <button
-                className="secondary"
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-              >
-                חודש הבא
-              </button>
+  <button
+    className="secondary"
+    onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+  >
+    חודש הבא
+  </button>
 
-              <button onClick={() => {
-                setShowCreateShift(!showCreateShift)
-                setEditingShiftId(null)
-                setAssignShiftId(null)
-                setSelectedShiftDetails(null)
-              }}>
-                יצירת משמרת חדשה
-              </button>
+  <button className="secondary" onClick={loadAdminShifts}>רענון</button>
+  <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
+</div>
 
-              <button className="secondary" onClick={loadAdminShifts}>רענון</button>
-              <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
-            </div>
 
-            {showCreateShift && (
-              <div className="info-block">
-                <strong>יצירת משמרת חדשה</strong>
-
-                <input
-                  placeholder="שם המשמרת"
-                  value={newShift.title}
-                  onChange={(e) => setNewShift({ ...newShift, title: e.target.value })}
-                />
-
-                <div className="form-grid">
-                  <input
-                    type="date"
-                    value={newShift.shift_date}
-                    onChange={(e) => setNewShift({ ...newShift, shift_date: e.target.value })}
-                  />
-                  <input
-                    type="time"
-                    value={newShift.start_time}
-                    onChange={(e) => setNewShift({ ...newShift, start_time: e.target.value })}
-                  />
-                </div>
-
-                <input
-                  type="time"
-                  value={newShift.end_time}
-                  onChange={(e) => setNewShift({ ...newShift, end_time: e.target.value })}
-                />
-
-                <textarea
-                  placeholder="הערות"
-                  value={newShift.notes}
-                  onChange={(e) => setNewShift({ ...newShift, notes: e.target.value })}
-                />
-
-                <div className="actions">
-                  <button onClick={createShift}>שמור</button>
-                  <button className="secondary" onClick={() => setShowCreateShift(false)}>ביטול</button>
-                </div>
-              </div>
-            )}
 
             {editingShiftId && (
               <div className="info-block">
@@ -658,7 +619,14 @@ export default function App() {
                   <button
                     key={dateKey + String(muted)}
                     className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={() => setSelectedDate(dateKey)}
+                    onClick={()onClick={() => {
+  setSelectedDate(dateKey)
+  setDayPanelOpen(true)
+  setShowCreateShift(false)
+  setEditingShiftId(null)
+  setAssignShiftId(null)
+  setSelectedShiftDetails(null)
+}} => setSelectedDate(dateKey)}
                   >
                     <div className="day-number">{dateObj.getDate()}</div>
                     <div className="day-stats">
@@ -671,37 +639,111 @@ export default function App() {
             </div>
           </div>
 
-          <div className="card">
-            <h2>משמרות ליום {selectedDate}</h2>
+          {dayPanelOpen && (
+  <div className="card">
+    <h2>משמרות ליום {selectedDate}</h2>
 
-            {selectedDayShifts.length === 0 ? (
-              <p>אין משמרות ביום הזה</p>
-            ) : (
-              <div className="shift-list">
-                {selectedDayShifts.map((shift) => (
-                  <div key={shift.id} className="shift-card">
-                    <h3>{shift.title}</h3>
-                    <p>{shift.start_time} - {shift.end_time}</p>
-                    {shift.notes ? <p>{shift.notes}</p> : null}
+    <div className="actions wrap">
+      <button
+        onClick={() => {
+          setShowCreateShift(!showCreateShift)
+          setEditingShiftId(null)
+          setAssignShiftId(null)
+          setSelectedShiftDetails(null)
+          setNewShift({
+            ...emptyShiftForm(),
+            shift_date: selectedDate,
+          })
+        }}
+      >
+        יצירת משמרת ביום הזה
+      </button>
 
-                    <div className="small-stats">
-                      <span className="badge ok">אושר: {shift.yes_count || 0}</span>
-                      <span className="badge bad">
-                        בעיה: {(shift.no_count || 0) + (shift.pending_count || 0) + (shift.maybe_count || 0)}
-                      </span>
-                    </div>
+      <button
+        className="secondary"
+        onClick={() => {
+          setDayPanelOpen(false)
+          setShowCreateShift(false)
+          setEditingShiftId(null)
+          setAssignShiftId(null)
+          setSelectedShiftDetails(null)
+        }}
+      >
+        סגור
+      </button>
+    </div>
 
-                    <div className="actions wrap">
-                      <button onClick={() => loadShiftDetails(shift.id)}>פתח</button>
-                      <button className="secondary" onClick={() => loadAssignableUsers(shift.id)}>שייך אנשים</button>
-                      <button className="secondary" onClick={() => startEditShift(shift)}>ערוך</button>
-                      <button className="danger" onClick={() => deleteShift(shift.id)}>מחק</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+    {showCreateShift && (
+      <div className="info-block">
+        <strong>יצירת משמרת חדשה</strong>
+
+        <input
+          placeholder="שם המשמרת"
+          value={newShift.title}
+          onChange={(e) => setNewShift({ ...newShift, title: e.target.value })}
+        />
+
+        <div className="form-grid">
+          <input
+            type="date"
+            value={newShift.shift_date}
+            onChange={(e) => setNewShift({ ...newShift, shift_date: e.target.value })}
+          />
+          <input
+            type="time"
+            value={newShift.start_time}
+            onChange={(e) => setNewShift({ ...newShift, start_time: e.target.value })}
+          />
+        </div>
+
+        <input
+          type="time"
+          value={newShift.end_time}
+          onChange={(e) => setNewShift({ ...newShift, end_time: e.target.value })}
+        />
+
+        <textarea
+          placeholder="הערות"
+          value={newShift.notes}
+          onChange={(e) => setNewShift({ ...newShift, notes: e.target.value })}
+        />
+
+        <div className="actions">
+          <button onClick={createShift}>שמור</button>
+          <button className="secondary" onClick={() => setShowCreateShift(false)}>ביטול</button>
+        </div>
+      </div>
+    )}
+
+    {selectedDayShifts.length === 0 ? (
+      <p>אין משמרות ביום הזה</p>
+    ) : (
+      <div className="shift-list">
+        {selectedDayShifts.map((shift) => (
+          <div key={shift.id} className="shift-card">
+            <h3>{shift.title}</h3>
+            <p>{shift.start_time} - {shift.end_time}</p>
+            {shift.notes ? <p>{shift.notes}</p> : null}
+
+            <div className="small-stats">
+              <span className="badge ok">אושר: {shift.yes_count || 0}</span>
+              <span className="badge bad">
+                בעיה: {(shift.no_count || 0) + (shift.pending_count || 0) + (shift.maybe_count || 0)}
+              </span>
+            </div>
+
+            <div className="actions wrap">
+              <button onClick={() => loadShiftDetails(shift.id)}>פתח</button>
+              <button className="secondary" onClick={() => loadAssignableUsers(shift.id)}>שייך אנשים</button>
+              <button className="secondary" onClick={() => startEditShift(shift)}>ערוך</button>
+              <button className="danger" onClick={() => deleteShift(shift.id)}>מחק</button>
+            </div>
           </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
 
           {selectedShiftId && (
             <div className="card">
