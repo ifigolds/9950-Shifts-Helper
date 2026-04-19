@@ -433,6 +433,20 @@ textarea {
   margin-top: 14px;
 }
 
+.response-summary,
+.user-meta-row,
+.problem-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.response-actions-modal {
+  margin-top: 6px;
+}
+
 .status-cluster {
   display: flex;
   align-items: center;
@@ -473,6 +487,10 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.12);
+}
+
+.problem-strip .badge {
+  max-width: 100%;
 }
 
 .badge,
@@ -909,6 +927,7 @@ textarea {
   .overlay-header,
   .shift-card-head,
   .handover-head,
+  .response-summary,
   .response-actions,
   .actions,
   .overlay-actions-bar {

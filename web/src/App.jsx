@@ -66,6 +66,20 @@ function personName(person) {
   return [person.first_name, person.last_name].filter(Boolean).join(' ') || 'לא צוין'
 }
 
+function recommendationText(recommendation) {
+  if (recommendation === 'overlap') return 'חופף למשמרת אחרת'
+  if (recommendation === 'recent') return 'עשה משמרת לאחרונה'
+  if (recommendation === 'assigned') return 'כבר משויך למשמרת הזאת'
+  return 'מומלץ לשיבוץ'
+}
+
+function recommendationClass(recommendation) {
+  if (recommendation === 'overlap') return 'danger'
+  if (recommendation === 'recent') return 'warning'
+  if (recommendation === 'assigned') return 'pending'
+  return 'success'
+}
+
 function isSameDay(dateA, dateB) {
   return formatDateKey(dateA) === formatDateKey(dateB)
 }
@@ -395,6 +409,10 @@ export default function App() {
     setOverlay({ type: 'decline-reason', shift })
   }
 
+  function openResponseOverlay(shift) {
+    setOverlay({ type: 'change-response', shift })
+  }
+
   function openDayOverlay(dateKey) {
     syncCalendarToDateKey(dateKey)
     setOverlay({ type: 'day', dateKey })
@@ -432,9 +450,9 @@ export default function App() {
     try {
       setError('')
       const shift = getShiftById(shiftId)
-      const data = await api('/admin/users')
+      const data = await api(`/admin/users?shift_id=${shiftId}`)
       setOverlayUsers(data.users || [])
-      setSelectedUserIds([])
+      setSelectedUserIds((data.users || []).filter((user) => user.assigned_to_target).map((user) => Number(user.id)))
       setOverlay({ type: 'assign-users', shift })
     } catch (err) {
       setError(err.message || 'שגיאה בטעינת רשימת המשתמשים')
@@ -605,6 +623,16 @@ export default function App() {
 
         {shift.notes ? <div className="note-box">הערות: {shift.notes}</div> : null}
 
+        {shift.problem_people?.length ? (
+          <div className="problem-strip">
+            {shift.problem_people.slice(0, 4).map((person, index) => (
+              <span key={`${shift.id}-problem-${index}`} className={`badge ${statusBadgeClass(person.status)}`}>
+                {person.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
         <div className="stat-line">
           <span className="mini-stat">סה״כ {total}</span>
           <span className="mini-stat success-text">מגיעים {shift.yes_count || 0}</span>
@@ -620,6 +648,7 @@ export default function App() {
 
   function renderUserShiftCard(shift) {
     const showReplacement = shift.is_active && shift.replacement_people?.length
+    const hasResponse = shift.status && shift.status !== 'pending'
 
     return (
       <div key={shift.id} className="shift-card-shell">
@@ -677,28 +706,37 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="response-actions">
-          <button
-            className={`success small-button ${shift.status === 'yes' ? 'is-active' : ''}`}
-            onClick={() => respondToShift(shift.id, 'yes')}
-          >
-            מגיע
-          </button>
+        {hasResponse ? (
+          <div className="response-summary">
+            <span className="mini-stat">תשובה הוזנה</span>
+            <button className="secondary small-button" onClick={() => openResponseOverlay(shift)}>
+              שנה תשובה
+            </button>
+          </div>
+        ) : (
+          <div className="response-actions">
+            <button
+              className={`success small-button ${shift.status === 'yes' ? 'is-active' : ''}`}
+              onClick={() => respondToShift(shift.id, 'yes')}
+            >
+              מגיע
+            </button>
 
-          <button
-            className={`warning small-button ${shift.status === 'maybe' ? 'is-active' : ''}`}
-            onClick={() => respondToShift(shift.id, 'maybe')}
-          >
-            אולי
-          </button>
+            <button
+              className={`warning small-button ${shift.status === 'maybe' ? 'is-active' : ''}`}
+              onClick={() => respondToShift(shift.id, 'maybe')}
+            >
+              אולי
+            </button>
 
-          <button
-            className={`danger small-button ${shift.status === 'no' ? 'is-active' : ''}`}
-            onClick={() => openDeclineOverlay(shift)}
-          >
-            לא מגיע
-          </button>
-        </div>
+            <button
+              className={`danger small-button ${shift.status === 'no' ? 'is-active' : ''}`}
+              onClick={() => openDeclineOverlay(shift)}
+            >
+              לא מגיע
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -892,6 +930,35 @@ export default function App() {
                 <div className="overlay-actions-bar">
                   <button onClick={() => respondToShift(overlay.shift.id, 'no', noReason)}>שמור תשובה</button>
                   <button className="secondary" onClick={() => setOverlay(null)}>ביטול</button>
+                </div>
+              </>
+            )}
+
+            {overlay.type === 'change-response' && (
+              <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="section-tag">CHANGE RESPONSE</div>
+                    <div className="overlay-title">{overlay.shift.title}</div>
+                    <div className="overlay-subtitle">אפשר לעדכן את התשובה שלך למשמרת מכל מצב.</div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
+                <div className="response-actions response-actions-modal">
+                  <button className="success" onClick={() => respondToShift(overlay.shift.id, 'yes')}>
+                    מגיע
+                  </button>
+                  <button className="warning" onClick={() => respondToShift(overlay.shift.id, 'maybe')}>
+                    אולי
+                  </button>
+                  <button className="danger" onClick={() => openDeclineOverlay(overlay.shift)}>
+                    לא מגיע
+                  </button>
+                </div>
+
+                <div className="overlay-actions-bar">
+                  <button className="secondary" onClick={() => setOverlay(null)}>סגור</button>
                 </div>
               </>
             )}
@@ -1150,12 +1217,30 @@ export default function App() {
                           <input
                             type="checkbox"
                             checked={selectedUserIds.includes(Number(user.id))}
+                            disabled={user.has_overlap}
                             onChange={() => toggleUserSelection(user.id)}
                           />
                           <div>
                             <div className="list-main">{user.first_name} {user.last_name}</div>
                             <div className="list-sub">דרגה: {user.rank || '-'}</div>
                             <div className="list-sub">סוג שירות: {user.service_type || '-'}</div>
+                            <div className="list-sub">
+                              משמרת אחרונה: {user.last_shift?.label || 'עדיין לא שובץ'}
+                            </div>
+                            {user.rest_hours !== null ? (
+                              <div className="list-sub">מנוחה עד המשמרת: {user.rest_hours} שעות</div>
+                            ) : null}
+                            {user.overlap_shift ? (
+                              <div className="list-sub danger-text">חופף עם: {user.overlap_shift.label}</div>
+                            ) : null}
+                            <div className="user-meta-row">
+                              <span className={`badge ${recommendationClass(user.recommendation)}`}>
+                                {recommendationText(user.recommendation)}
+                              </span>
+                              {user.assigned_to_target ? (
+                                <span className="badge pending">כבר משויך</span>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                       </label>
