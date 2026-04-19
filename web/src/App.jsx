@@ -422,16 +422,23 @@ export default function App() {
       )}
 
       {mode === 'select' && (
-        <div className="card center">
-          <h2>ברוך הבא {profile.user.first_name || ''}</h2>
-          <p>נא לבחור סוג כניסה</p>
+  <div className="entry-screen">
+    <div className="card center entry-main-card">
+      <h2>ברוך הבא {profile.user.first_name || ''}</h2>
+      <p>נא לבחור סוג כניסה</p>
 
-          <div className="actions">
-            <button onClick={enterUserMode}>כניסה רגילה</button>
-            <button className="secondary" onClick={enterAdminMode}>כניסת מנהל</button>
-          </div>
-        </div>
-      )}
+      <button className="entry-main-button" onClick={enterUserMode}>
+        כניסה רגילה
+      </button>
+    </div>
+
+    <div className="entry-admin-wrap">
+      <button className="entry-admin-button" onClick={enterAdminMode}>
+        כניסת מנהל
+      </button>
+    </div>
+  </div>
+)}
 
       {mode === 'user' && (
         <div className="card">

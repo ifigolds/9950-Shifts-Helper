@@ -126,7 +126,7 @@ router.post('/shifts', authMiddleware, adminMiddleware, (req, res) => {
 });
 
 // обновить смену
-router.put('/shifts/:id', authMiddleware, adminMiddleware, (req, res) => {
+router.put('/shifts/:id', authMiddleware, adminMiddleware, async (req, res) => {
   const shiftId = req.params.id;
   const { title, shift_date, start_time, end_time, notes } = req.body;
 
@@ -134,68 +134,108 @@ router.put('/shifts/:id', authMiddleware, adminMiddleware, (req, res) => {
     return res.status(400).json({ error: 'חסרים פרטים לעדכון משמרת' });
   }
 
-  db.run(
-    `
-    UPDATE shifts
-    SET title = ?, shift_date = ?, start_time = ?, end_time = ?, notes = ?
-    WHERE id = ?
-    `,
-    [title, shift_date, start_time, end_time, notes || '', shiftId],
-    function (err) {
-      if (err) return res.status(500).json({ error: err.message });
+  const oldShiftSql = `SELECT * FROM shifts WHERE id = ?`;
 
-      db.all(
-        `
-        SELECT u.telegram_id
-        FROM shift_assignments sa
-        JOIN users u ON u.id = sa.user_id
-        WHERE sa.shift_id = ?
-        `,
-        [shiftId],
-        async (usersErr, users) => {
+  db.get(oldShiftSql, [shiftId], async (findErr, oldShift) => {
+    if (findErr) {
+      return res.status(500).json({ error: findErr.message });
+    }
+
+    if (!oldShift) {
+      return res.status(404).json({ error: 'המשמרת לא נמצאה' });
+    }
+
+    const updateSql = `
+      UPDATE shifts
+      SET title = ?, shift_date = ?, start_time = ?, end_time = ?, notes = ?
+      WHERE id = ?
+    `;
+
+    db.run(updateSql, [title, shift_date, start_time, end_time, notes || '', shiftId], async function (err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+
+      try {
+        const usersSql = `
+          SELECT u.telegram_id
+          FROM shift_assignments sa
+          JOIN users u ON u.id = sa.user_id
+          WHERE sa.shift_id = ?
+        `;
+
+        db.all(usersSql, [shiftId], async (usersErr, users) => {
           if (usersErr) {
             return res.status(500).json({ error: usersErr.message });
           }
 
-          for (const user of users) {
-            if (!user.telegram_id) continue;
+          let sent = 0;
 
-            try {
-                              await bot.sendMessage(
+          if (users && users.length) {
+            const changes = [];
+
+            if (oldShift.title !== title) {
+              changes.push(`שם המשמרת: ${oldShift.title} → ${title}`);
+            }
+
+            if (oldShift.shift_date !== shift_date) {
+              changes.push(`תאריך: ${oldShift.shift_date} → ${shift_date}`);
+            }
+
+            if (oldShift.start_time !== start_time || oldShift.end_time !== end_time) {
+              changes.push(`שעה: ${oldShift.start_time}-${oldShift.end_time} → ${start_time}-${end_time}`);
+            }
+
+            if ((oldShift.notes || '') !== (notes || '')) {
+              changes.push(`הערות עודכנו`);
+            }
+
+            const message =
+              `✏️ המשמרת שלך עודכנה\n\n` +
+              `שם המשמרת: ${title}\n` +
+              `תאריך: ${shift_date}\n` +
+              `שעה: ${start_time} - ${end_time}\n` +
+              `${notes ? `הערות: ${notes}\n` : ''}\n` +
+              `${changes.length ? `שינויים:\n• ${changes.join('\n• ')}\n\n` : ''}` +
+              `נא להיכנס לאפליקציה ולבדוק את הפרטים המעודכנים.`;
+
+            for (const user of users) {
+              if (!user.telegram_id) continue;
+
+              try {
+                await bot.sendMessage(
                   user.telegram_id,
-                  `שובצת למשמרת חדשה ✅\n\n` +
-                  `שם המשמרת: ${shift.title}\n` +
-                  `תאריך: ${shift.shift_date}\n` +
-                  `שעה: ${shift.start_time} - ${shift.end_time}\n` +
-                  `${shift.notes ? `הערות: ${shift.notes}\n` : ''}\n` +
-                  `נא לאשר האם תגיע למשמרת.`,
+                  message,
                   {
                     reply_markup: {
                       inline_keyboard: [
                         [
-                          { text: '✅ מגיע', callback_data: `shift_yes_${shift.id}` },
-                          { text: '❌ לא מגיע', callback_data: `shift_no_${shift.id}` }
-                        ],
-                        [
-                          { text: '🤔 לא בטוח', callback_data: `shift_maybe_${shift.id}` }
-                        ],
-                        [
-                          { text: 'פתיחת האפליקציה', web_app: { url: process.env.BASE_URL } }
+                          {
+                            text: '📲 פתיחת המערכת',
+                            web_app: { url: process.env.BASE_URL }
+                          }
                         ]
                       ]
                     }
                   }
                 );
-            } catch (e) {
-              console.error('Shift update notification error:', e.message);
+                sent += 1;
+              } catch (sendErr) {
+                console.error('Edit shift notification error:', sendErr.message);
+              }
             }
           }
 
-          return res.json({ success: true });
-        }
-      );
-    }
-  );
+          return res.json({
+            success: true,
+            notifications_sent: sent
+          });
+        });
+      } catch (notifyErr) {
+        return res.status(500).json({ error: notifyErr.message });
+      }
+    });
+  });
 });
 
 // удалить смену

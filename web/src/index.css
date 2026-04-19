@@ -282,3 +282,54 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+.entry-screen {
+  min-height: 68vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.entry-main-card {
+  padding-top: 34px;
+  padding-bottom: 34px;
+}
+
+.entry-main-button {
+  width: 100%;
+  min-height: 82px;
+  border-radius: 999px;
+  font-size: 26px;
+  font-weight: 800;
+  margin-top: 22px;
+  background: linear-gradient(180deg, #35a8e0, #2495d1);
+  box-shadow: 0 12px 28px rgba(53, 168, 224, 0.24);
+}
+
+.entry-admin-wrap {
+  margin-top: auto;
+  padding-bottom: 6px;
+}
+
+.entry-admin-button {
+  width: 100%;
+  min-height: 72px;
+  border-radius: 999px;
+  font-size: 22px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #edf1f6, #dfe6ee);
+  color: #17212b;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+@media (max-width: 700px) {
+  .entry-main-button {
+    min-height: 74px;
+    font-size: 22px;
+  }
+
+  .entry-admin-button {
+    min-height: 66px;
+    font-size: 20px;
+  }
+}
