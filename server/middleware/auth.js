@@ -1,55 +1,22 @@
 const { db } = require('../database');
-const crypto = require('crypto');
+const { validateTelegramInitData } = require('../telegramAuth');
 
-function parseInitData(initData) {
-  const params = new URLSearchParams(initData);
-  const data = {};
+function attachTelegramUser(req, res, next, telegramUser) {
+  const telegramId = String(telegramUser.id);
 
-  for (const [key, value] of params.entries()) {
-    data[key] = value;
-  }
+  db.get(
+    'SELECT * FROM users WHERE telegram_id = ?',
+    [telegramId],
+    (err, user) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
 
-  return data;
-}
-
-function validateTelegramInitData(initData, botToken) {
-  try {
-    const data = parseInitData(initData);
-    const hash = data.hash;
-
-    if (!hash) return null;
-
-    delete data.hash;
-
-    const dataCheckString = Object.keys(data)
-      .sort()
-      .map((key) => `${key}=${data[key]}`)
-      .join('\n');
-
-    const secretKey = crypto
-      .createHmac('sha256', 'WebAppData')
-      .update(botToken)
-      .digest();
-
-    const calculatedHash = crypto
-      .createHmac('sha256', secretKey)
-      .update(dataCheckString)
-      .digest('hex');
-
-    if (calculatedHash !== hash) {
-      return null;
+      req.telegramUser = telegramUser;
+      req.dbUser = user || null;
+      return next();
     }
-
-    let user = null;
-    if (data.user) {
-      user = JSON.parse(data.user);
-    }
-
-    return { user };
-  } catch (err) {
-    console.error('Telegram auth validation error:', err.message);
-    return null;
-  }
+  );
 }
 
 function authMiddleware(req, res, next) {
@@ -58,21 +25,7 @@ function authMiddleware(req, res, next) {
   // DEBUG режим для браузера / Vercel без Telegram
   if (initData && initData.startsWith('debug_user=')) {
     const telegramId = initData.replace('debug_user=', '');
-
-    db.get(
-      'SELECT * FROM users WHERE telegram_id = ?',
-      [telegramId],
-      (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: err.message });
-        }
-
-        req.telegramUser = { id: telegramId };
-        req.dbUser = user || null;
-        return next();
-      }
-    );
-    return;
+    return attachTelegramUser(req, res, next, { id: telegramId });
   }
 
   if (!initData) {
@@ -85,21 +38,7 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Неверная авторизация Telegram' });
   }
 
-  const telegramId = String(result.user.id);
-
-  db.get(
-    'SELECT * FROM users WHERE telegram_id = ?',
-    [telegramId],
-    (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-
-      req.telegramUser = result.user;
-      req.dbUser = user || null;
-      return next();
-    }
-  );
+  return attachTelegramUser(req, res, next, result.user);
 }
 
 module.exports = authMiddleware;
