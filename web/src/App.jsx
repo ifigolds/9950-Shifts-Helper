@@ -616,25 +616,33 @@ export default function App() {
                 const isSelected = selectedDate === dateKey
 
                 return (
-                  <button
-                    key={dateKey + String(muted)}
-                    className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={()onClick={() => {
-  setSelectedDate(dateKey)
-  setDayPanelOpen(true)
-  setShowCreateShift(false)
-  setEditingShiftId(null)
-  setAssignShiftId(null)
-  setSelectedShiftDetails(null)
-}} => setSelectedDate(dateKey)}
-                  >
-                    <div className="day-number">{dateObj.getDate()}</div>
-                    <div className="day-stats">
-                      {dayStats.fullyConfirmed > 0 ? <span className="green-number">{dayStats.fullyConfirmed}</span> : <span />}
-                      {dayStats.withProblems > 0 ? <span className="red-number">{dayStats.withProblems}</span> : null}
-                    </div>
-                  </button>
-                )
+  <button
+    key={dateKey + String(muted)}
+    className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
+    onClick={() => {
+      setSelectedDate(dateKey)
+      setDayPanelOpen(true)
+      setShowCreateShift(false)
+      setEditingShiftId(null)
+      setAssignShiftId(null)
+      setSelectedShiftDetails(null)
+    }}
+  >
+    <div className="day-number">{dateObj.getDate()}</div>
+
+    <div className="day-stats">
+      {dayStats.fullyConfirmed > 0 ? (
+        <span className="green-number">{dayStats.fullyConfirmed}</span>
+      ) : (
+        <span />
+      )}
+
+      {dayStats.withProblems > 0 ? (
+        <span className="red-number">{dayStats.withProblems}</span>
+      ) : null}
+    </div>
+  </button>
+)
               })}
             </div>
           </div>
