@@ -16,6 +16,44 @@ router.get('/profile', authMiddleware, (req, res) => {
   });
 });
 
+router.get('/shifts', authMiddleware, (req, res) => {
+  if (!req.dbUser) {
+    return res.status(404).json({ error: 'המשתמש לא נמצא' });
+  }
+
+  if (req.dbUser.registration_status !== 'approved') {
+    return res.status(403).json({ error: 'ההרשמה טרם אושרה' });
+  }
+
+  const sql = `
+    SELECT
+      sa.id AS assignment_id,
+      sa.status,
+      sa.responded_at,
+      sa.comment,
+      s.id,
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      s.notes
+    FROM shift_assignments sa
+    JOIN shifts s ON s.id = sa.shift_id
+    WHERE sa.user_id = ?
+    ORDER BY s.shift_date ASC, s.start_time ASC
+  `;
+
+  db.all(sql, [req.dbUser.id], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    return res.json({
+      shifts: rows || []
+    });
+  });
+});
+
 router.get('/next-shift', authMiddleware, (req, res) => {
   if (!req.dbUser) {
     return res.status(404).json({ error: 'המשתמש לא נמצא' });

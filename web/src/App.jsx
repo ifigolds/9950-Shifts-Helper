@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 
 const API_BASE = 'https://nine950-backend.onrender.com'
+const WEEKDAYS = ['ב', 'ג', 'ד', 'ה', 'ו', 'ש', 'א']
 
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
   if (status === 'no') return 'לא מגיע'
   if (status === 'maybe') return 'לא בטוח'
-  return 'לא ענה'
+  return 'ממתין לתשובה'
 }
 
 function statusBadgeClass(status) {
@@ -41,11 +42,8 @@ function formatHumanDate(dateKey) {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    year: 'numeric',
   })
-}
-
-function isSameDay(dateA, dateB) {
-  return formatDateKey(dateA) === formatDateKey(dateB)
 }
 
 function emptyShiftForm(dateKey = formatDateKey(new Date())) {
@@ -62,14 +60,25 @@ function normalizePhone(phone) {
   return String(phone || '').replace(/[^\d+]/g, '')
 }
 
+function isSameDay(dateA, dateB) {
+  return formatDateKey(dateA) === formatDateKey(dateB)
+}
+
+function getShiftProblemCount(shift) {
+  return Number(shift.pending_count || 0) + Number(shift.maybe_count || 0) + Number(shift.no_count || 0)
+}
+
+function isShiftFullyConfirmed(shift) {
+  return Number(shift.total || 0) > 0 && getShiftProblemCount(shift) === 0
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [profile, setProfile] = useState(null)
   const [mode, setMode] = useState('select')
 
-  const [userShift, setUserShift] = useState(null)
-  const [noReasonOpen, setNoReasonOpen] = useState(false)
+  const [userShifts, setUserShifts] = useState([])
   const [noReason, setNoReason] = useState('')
 
   const [adminShifts, setAdminShifts] = useState([])
@@ -91,6 +100,7 @@ export default function App() {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(options.headers || {}),
         'x-telegram-init-data': initData,
       },
     })
@@ -111,15 +121,9 @@ export default function App() {
     return data
   }
 
-  async function loadProfile() {
-    const data = await api('/me/profile')
-    setProfile(data)
-    return data
-  }
-
-  async function loadUserShift() {
-    const data = await api('/me/next-shift')
-    setUserShift(data.shift || null)
+  async function loadUserShifts() {
+    const data = await api('/me/shifts')
+    setUserShifts(data.shifts || [])
   }
 
   async function loadAdminShifts() {
@@ -133,14 +137,6 @@ export default function App() {
 
   function getShiftsByDateKey(dateKey) {
     return adminShifts.filter((shift) => shift.shift_date === dateKey)
-  }
-
-  function getShiftProblemCount(shift) {
-    return Number(shift.pending_count || 0) + Number(shift.maybe_count || 0) + Number(shift.no_count || 0)
-  }
-
-  function isShiftFullyConfirmed(shift) {
-    return Number(shift.total || 0) > 0 && getShiftProblemCount(shift) === 0
   }
 
   function getCalendarDayStats(dateKey) {
@@ -158,50 +154,11 @@ export default function App() {
     })
 
     return {
-      fullyConfirmed,
-      withProblems,
-      total: shifts.length,
-    }
-  }
-
-  function getCurrentMonthStats(dateObj) {
-    const month = dateObj.getMonth()
-    const year = dateObj.getFullYear()
-
-    const shifts = adminShifts.filter((shift) => {
-      const shiftDate = parseDateKey(shift.shift_date)
-      return shiftDate.getMonth() === month && shiftDate.getFullYear() === year
-    })
-
-    let fullyConfirmed = 0
-    let withProblems = 0
-
-    shifts.forEach((shift) => {
-      if (isShiftFullyConfirmed(shift)) {
-        fullyConfirmed += 1
-      } else {
-        withProblems += 1
-      }
-    })
-
-    return {
       total: shifts.length,
       fullyConfirmed,
       withProblems,
     }
   }
-
-  const selectedDayOverview = useMemo(() => {
-    const shifts = getShiftsByDateKey(selectedDate)
-
-    return {
-      shifts,
-      stats: getCalendarDayStats(selectedDate),
-      title: formatHumanDate(selectedDate),
-    }
-  }, [selectedDate, adminShifts])
-
-  const monthStats = useMemo(() => getCurrentMonthStats(calendarDate), [calendarDate, adminShifts])
 
   const monthCells = useMemo(() => {
     const current = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1)
@@ -209,16 +166,14 @@ export default function App() {
     const startWeekday = (firstDayOfMonth.getDay() + 6) % 7
     const daysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate()
     const daysInPrevMonth = new Date(current.getFullYear(), current.getMonth(), 0).getDate()
-
     const cells = []
 
-    for (let i = startWeekday - 1; i >= 0; i--) {
-      const day = daysInPrevMonth - i
-      const dateObj = new Date(current.getFullYear(), current.getMonth() - 1, day)
+    for (let i = startWeekday - 1; i >= 0; i -= 1) {
+      const dateObj = new Date(current.getFullYear(), current.getMonth() - 1, daysInPrevMonth - i)
       cells.push({ dateObj, muted: true })
     }
 
-    for (let day = 1; day <= daysInMonth; day++) {
+    for (let day = 1; day <= daysInMonth; day += 1) {
       const dateObj = new Date(current.getFullYear(), current.getMonth(), day)
       cells.push({ dateObj, muted: false })
     }
@@ -232,6 +187,30 @@ export default function App() {
     return cells
   }, [calendarDate])
 
+  const selectedDayShifts = useMemo(
+    () => adminShifts.filter((shift) => shift.shift_date === selectedDate),
+    [selectedDate, adminShifts]
+  )
+
+  const selectedDayStats = useMemo(() => {
+    let fullyConfirmed = 0
+    let withProblems = 0
+
+    selectedDayShifts.forEach((shift) => {
+      if (isShiftFullyConfirmed(shift)) {
+        fullyConfirmed += 1
+      } else {
+        withProblems += 1
+      }
+    })
+
+    return {
+      total: selectedDayShifts.length,
+      fullyConfirmed,
+      withProblems,
+    }
+  }, [selectedDayShifts])
+
   useEffect(() => {
     async function init() {
       try {
@@ -240,7 +219,9 @@ export default function App() {
           tg.ready()
           tg.expand()
         }
-        await loadProfile()
+
+        const data = await api('/me/profile')
+        setProfile(data)
       } catch (err) {
         setError(err.message || 'שגיאה')
       } finally {
@@ -252,7 +233,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!overlay) return
+    if (!overlay) return undefined
 
     function onKeyDown(event) {
       if (event.key === 'Escape') {
@@ -260,18 +241,24 @@ export default function App() {
       }
     }
 
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
   }, [overlay])
 
   async function enterUserMode() {
     try {
       setError('')
       setOverlay(null)
-      await loadUserShift()
+      await loadUserShifts()
       setMode('user')
     } catch (err) {
-      setError(err.message || 'שגיאה בטעינת משמרת')
+      setError(err.message || 'שגיאה בטעינת המשמרות שלך')
     }
   }
 
@@ -281,6 +268,10 @@ export default function App() {
       if (!profile?.user || profile.user.role !== 'admin') {
         throw new Error('אין לך הרשאת מנהל')
       }
+
+      const today = new Date()
+      setSelectedDate(formatDateKey(today))
+      setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
       await loadAdminShifts()
       setOverlay(null)
       setMode('admin')
@@ -289,26 +280,38 @@ export default function App() {
     }
   }
 
-  async function respond(status, comment = '') {
-    if (!userShift) return
+  async function refreshAdminCalendar() {
+    try {
+      setError('')
+      await loadAdminShifts()
+    } catch (err) {
+      setError(err.message || 'שגיאה ברענון לוח המשמרות')
+    }
+  }
 
+  async function respondToShift(shiftId, status, comment = '') {
     try {
       setError('')
       await api('/me/shift-response', {
         method: 'POST',
         body: JSON.stringify({
-          shift_id: userShift.id,
+          shift_id: shiftId,
           status,
           comment,
         }),
       })
 
       setNoReason('')
-      setNoReasonOpen(false)
-      await loadUserShift()
+      setOverlay(null)
+      await loadUserShifts()
     } catch (err) {
-      setError(err.message || 'שגיאה בעדכון תשובה')
+      setError(err.message || 'שגיאה בעדכון התשובה למשמרת')
     }
+  }
+
+  function openDeclineOverlay(shift) {
+    setNoReason(shift.status === 'no' ? shift.comment || '' : '')
+    setOverlay({ type: 'decline-reason', shift })
   }
 
   function openDayOverlay(dateKey) {
@@ -365,14 +368,11 @@ export default function App() {
         body: JSON.stringify(newShift),
       })
 
-      setOverlay(null)
       await loadAdminShifts()
-      if (newShift.shift_date) {
-        const [y, m] = newShift.shift_date.split('-').map(Number)
-        setCalendarDate(new Date(y, m - 1, 1))
-        setSelectedDate(newShift.shift_date)
-        setOverlay({ type: 'day', dateKey: newShift.shift_date })
-      }
+      setSelectedDate(newShift.shift_date)
+      const [year, month] = newShift.shift_date.split('-').map(Number)
+      setCalendarDate(new Date(year, month - 1, 1))
+      setOverlay({ type: 'day', dateKey: newShift.shift_date })
     } catch (err) {
       setError(err.message || 'שגיאה ביצירת משמרת')
     }
@@ -389,22 +389,18 @@ export default function App() {
       })
 
       await loadAdminShifts()
-      if (editShift.shift_date) {
-        const [y, m] = editShift.shift_date.split('-').map(Number)
-        setCalendarDate(new Date(y, m - 1, 1))
-        setSelectedDate(editShift.shift_date)
-        setOverlay({ type: 'day', dateKey: editShift.shift_date })
-      } else {
-        setOverlay(null)
-      }
+      setSelectedDate(editShift.shift_date)
+      const [year, month] = editShift.shift_date.split('-').map(Number)
+      setCalendarDate(new Date(year, month - 1, 1))
+      setOverlay({ type: 'day', dateKey: editShift.shift_date })
     } catch (err) {
       setError(err.message || 'שגיאה בעדכון משמרת')
     }
   }
 
   async function deleteShift(shiftId) {
-    const ok = window.confirm('למחוק את המשמרת?')
-    if (!ok) return
+    const confirmed = window.confirm('למחוק את המשמרת?')
+    if (!confirmed) return
 
     try {
       setError('')
@@ -427,10 +423,12 @@ export default function App() {
   }
 
   function toggleUserSelection(userId) {
+    const normalizedUserId = Number(userId)
+
     setSelectedUserIds((prev) =>
-      prev.includes(userId)
-        ? prev.filter((id) => id !== userId)
-        : [...prev, userId]
+      prev.includes(normalizedUserId)
+        ? prev.filter((id) => id !== normalizedUserId)
+        : [...prev, normalizedUserId]
     )
   }
 
@@ -491,45 +489,89 @@ export default function App() {
     }
   }
 
-  function renderShiftActions(shift, compact = false) {
+  function renderAdminShiftActions(shift) {
     return (
-      <div className={`actions ${compact ? 'compact-actions' : ''}`}>
-        <button onClick={() => openShiftDetailsOverlay(shift.id)}>פרטים</button>
-        <button className="secondary" onClick={() => openAssignUsersOverlay(shift.id)}>שבץ אנשים</button>
-        <button className="secondary" onClick={() => openEditShiftOverlay(shift)}>ערוך</button>
-        <button className="danger" onClick={() => deleteShift(shift.id)}>מחק</button>
+      <div className="actions compact-actions">
+        <button className="small-button" onClick={() => openShiftDetailsOverlay(shift.id)}>פרטים</button>
+        <button className="secondary small-button" onClick={() => openAssignUsersOverlay(shift.id)}>שבץ אנשים</button>
+        <button className="secondary small-button" onClick={() => openEditShiftOverlay(shift)}>ערוך</button>
+        <button className="danger small-button" onClick={() => deleteShift(shift.id)}>מחק</button>
       </div>
     )
   }
 
-  function renderShiftCard(shift, compact = false) {
+  function renderAdminShiftCard(shift) {
+    const total = Number(shift.total || 0)
     const problemCount = getShiftProblemCount(shift)
+    const badgeTone = total === 0 || problemCount > 0 ? 'warning' : 'success'
+    const badgeLabel = total === 0
+      ? 'אין משובצים'
+      : problemCount > 0
+        ? `דורש טיפול ${problemCount}`
+        : 'סגור'
 
     return (
-      <div key={shift.id} className={`shift-card-shell ${compact ? 'shift-card-compact' : ''}`}>
+      <div key={shift.id} className="shift-card-shell">
         <div className="shift-card-head">
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
           </div>
           <div className="status-cluster">
-            <span className={`badge ${problemCount > 0 ? 'warning' : 'success'}`}>
-              {problemCount > 0 ? `דורש טיפול ${problemCount}` : 'סגור'}
-            </span>
+            <span className={`badge ${badgeTone}`}>{badgeLabel}</span>
           </div>
         </div>
 
         {shift.notes ? <div className="list-sub shift-notes">הערות: {shift.notes}</div> : null}
 
         <div className="stat-line">
-          <span className="mini-stat">סה״כ {shift.total || 0}</span>
+          <span className="mini-stat">סה״כ {total}</span>
           <span className="mini-stat success-text">מגיעים {shift.yes_count || 0}</span>
           <span className="mini-stat danger-text">לא מגיעים {shift.no_count || 0}</span>
           <span className="mini-stat warning-text">לא בטוחים {shift.maybe_count || 0}</span>
           <span className="mini-stat muted-text">ממתינים {shift.pending_count || 0}</span>
         </div>
 
-        {renderShiftActions(shift, compact)}
+        {renderAdminShiftActions(shift)}
+      </div>
+    )
+  }
+
+  function renderUserShiftCard(shift) {
+    return (
+      <div key={shift.id} className="shift-card-shell user-shift-card">
+        <div className="shift-card-head">
+          <div>
+            <div className="list-main">{shift.title}</div>
+            <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
+            <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+          </div>
+          <span className={`badge ${statusBadgeClass(shift.status)}`}>{statusText(shift.status)}</span>
+        </div>
+
+        {shift.notes ? <div className="note-box">הערות: {shift.notes}</div> : null}
+        {shift.comment ? <div className="note-box">סיבה שסומנה: {shift.comment}</div> : null}
+
+        <div className="response-actions">
+          <button
+            className={`success small-button ${shift.status === 'yes' ? 'is-active' : ''}`}
+            onClick={() => respondToShift(shift.id, 'yes')}
+          >
+            מגיע
+          </button>
+          <button
+            className={`warning small-button ${shift.status === 'maybe' ? 'is-active' : ''}`}
+            onClick={() => respondToShift(shift.id, 'maybe')}
+          >
+            אולי
+          </button>
+          <button
+            className={`danger small-button ${shift.status === 'no' ? 'is-active' : ''}`}
+            onClick={() => openDeclineOverlay(shift)}
+          >
+            לא מגיע
+          </button>
+        </div>
       </div>
     )
   }
@@ -582,319 +624,183 @@ export default function App() {
   }
 
   return (
-    <div className={`screen ${overlay ? 'overlay-open' : ''}`}>
-      <div className="card hero hero-card">
-        <h1>מערכת משמרות</h1>
-        <p>יחידה 9950</p>
-      </div>
-
-      {error && (
-        <div className="card error-card">
-          <p>{error}</p>
+    <div className={`screen ${mode === 'admin' ? 'screen-admin' : ''} ${overlay ? 'overlay-open' : ''}`}>
+      {mode === 'select' && (
+        <div className="card hero">
+          <h1>מערכת משמרות</h1>
+          <p>בחר איך להיכנס</p>
         </div>
       )}
 
+      {error ? (
+        <div className="card error-card">
+          <p>{error}</p>
+        </div>
+      ) : null}
+
       {mode === 'select' && (
         <div className="entry-screen">
-          <div className="card center entry-main-card">
-            <h2>ברוך הבא {profile.user.first_name || ''}</h2>
-            <p>בחר איך תרצה להיכנס עכשיו</p>
-            <button className="entry-main-button" onClick={enterUserMode}>
-              כניסה רגילה
-            </button>
+          <div className="card entry-card center">
+            <h2>שלום {profile.user.first_name || ''}</h2>
+            <p>כניסה רגילה מציגה את כל המשמרות ששובצת אליהן.</p>
+            <button className="entry-button" onClick={enterUserMode}>כניסה רגילה</button>
           </div>
 
-          <div className="entry-admin-wrap">
-            <button className="entry-admin-button" onClick={enterAdminMode}>
-              כניסת מנהל
-            </button>
-          </div>
+          {profile.user.role === 'admin' ? (
+            <div className="card entry-card center">
+              <h2>כניסת מנהל</h2>
+              <p>לוח עבודה נקי עם קליק על יום כדי לנהל את כל המשמרות שבו.</p>
+              <button className="entry-button secondary" onClick={enterAdminMode}>כניסת מנהל</button>
+            </div>
+          ) : null}
         </div>
       )}
 
       {mode === 'user' && (
-        <div className="card">
-          {!userShift ? (
-            <>
-              <h2>אין משמרות כרגע</h2>
-              <p>כרגע לא שובצה לך משמרת חדשה</p>
-              <div className="actions">
-                <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
-              </div>
-            </>
-          ) : (
-            <>
+        <div className="card user-screen-card">
+          <div className="user-screen-head">
+            <div>
               <div className="subtitle">כניסה רגילה</div>
-              <h2>{userShift.title}</h2>
+              <h2>כל המשמרות שלי</h2>
+            </div>
+            <button className="secondary small-button" onClick={() => setMode('select')}>חזרה</button>
+          </div>
 
-              <div className="info-block">
-                <strong>תאריך</strong>
-                <div>{userShift.shift_date}</div>
-              </div>
-
-              <div className="info-block">
-                <strong>שעה</strong>
-                <div>{userShift.start_time} - {userShift.end_time}</div>
-              </div>
-
-              <div className="info-block">
-                <strong>סטטוס</strong>
-                <div>{statusText(userShift.status)}</div>
-              </div>
-
-              {userShift.comment && (
-                <div className="info-block">
-                  <strong>סיבה</strong>
-                  <div>{userShift.comment}</div>
-                </div>
-              )}
-
-              {userShift.notes && (
-                <div className="info-block">
-                  <strong>הערות</strong>
-                  <div>{userShift.notes}</div>
-                </div>
-              )}
-
-              {!noReasonOpen ? (
-                <div className="actions">
-                  <button className="success" onClick={() => respond('yes')}>אני מגיע</button>
-                  <button className="danger" onClick={() => setNoReasonOpen(true)}>לא מגיע</button>
-                  <button className="warning" onClick={() => respond('maybe')}>לא בטוח</button>
-                  <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
-                </div>
-              ) : (
-                <>
-                  <div className="info-block">
-                    <strong>סיבה לאי הגעה</strong>
-                    <textarea
-                      value={noReason}
-                      onChange={(e) => setNoReason(e.target.value)}
-                      placeholder="כתוב כאן את הסיבה"
-                    />
-                  </div>
-                  <div className="actions">
-                    <button className="danger" onClick={() => respond('no', noReason)}>שלח</button>
-                    <button className="secondary" onClick={() => setNoReasonOpen(false)}>ביטול</button>
-                  </div>
-                </>
-              )}
-            </>
+          {userShifts.length ? (
+            <div className="user-shift-list">
+              {userShifts.map((shift) => renderUserShiftCard(shift))}
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h3>אין לך משמרות כרגע</h3>
+              <p>ברגע שאדמין ישבץ אותך, הן יופיעו כאן כרשימה מלאה.</p>
+            </div>
           )}
         </div>
       )}
 
       {mode === 'admin' && (
-        <>
-          <div className="card admin-header-card">
-            <div className="admin-header-main">
-              <div>
-                <div className="subtitle">כניסת מנהל</div>
-                <h2>יומן משמרות</h2>
-                <p className="admin-header-copy">
-                  לחץ על יום בלוח כדי לפתוח חלון פעולות, ליצור משמרת חדשה ולטפל במה שדורש תשומת לב.
-                </p>
-              </div>
+        <div className="admin-calendar-shell">
+          <div className="admin-month">{formatMonthTitle(calendarDate)}</div>
 
-              <div className="admin-header-actions">
-                <button onClick={() => openCreateShiftOverlay(selectedDate)}>משמרת חדשה</button>
-                <button className="secondary" onClick={loadAdminShifts}>רענון</button>
-                <button className="secondary" onClick={() => setMode('select')}>חזרה</button>
-              </div>
-            </div>
+          <div className="calendar-grid">
+            {WEEKDAYS.map((day) => (
+              <div key={day} className="weekday">{day}</div>
+            ))}
 
-            <div className="overview-grid">
-              <div className="overview-card">
-                <div className="overview-label">משמרות החודש</div>
-                <div className="overview-value">{monthStats.total}</div>
-              </div>
-              <div className="overview-card">
-                <div className="overview-label">סגורות</div>
-                <div className="overview-value success-text">{monthStats.fullyConfirmed}</div>
-              </div>
-              <div className="overview-card">
-                <div className="overview-label">דורשות טיפול</div>
-                <div className="overview-value warning-text">{monthStats.withProblems}</div>
-              </div>
-              <div className="overview-card">
-                <div className="overview-label">משמרות ביום שנבחר</div>
-                <div className="overview-value">{selectedDayOverview.stats.total}</div>
-              </div>
-            </div>
+            {monthCells.map(({ dateObj, muted }) => {
+              const dateKey = formatDateKey(dateObj)
+              const dayStats = getCalendarDayStats(dateKey)
+              const hasShifts = dayStats.total > 0
+              const isToday = isSameDay(dateObj, new Date())
+              const isSelected = selectedDate === dateKey
+
+              return (
+                <button
+                  key={`${dateKey}-${muted ? 'muted' : 'live'}`}
+                  className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${hasShifts ? 'has-shifts' : ''}`}
+                  onClick={() => openDayOverlay(dateKey)}
+                >
+                  <div className="day-cell-top">
+                    <span className="day-number">{dateObj.getDate()}</span>
+                    {hasShifts ? <span className="day-count">{dayStats.total}</span> : null}
+                  </div>
+
+                  <div className="day-stats">
+                    {dayStats.fullyConfirmed > 0 ? <span className="green-number">{dayStats.fullyConfirmed}</span> : <span />}
+                    {dayStats.withProblems > 0 ? <span className="red-number">{dayStats.withProblems}</span> : null}
+                  </div>
+                </button>
+              )
+            })}
           </div>
 
-          <div className="card admin-calendar-card">
-            <div className="calendar-toolbar">
-              <button
-                className="secondary"
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
-              >
-                חודש קודם
-              </button>
-              <button
-                className="secondary"
-                onClick={() => {
-                  const today = new Date()
-                  setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
-                  openDayOverlay(formatDateKey(today))
-                }}
-              >
-                היום
-              </button>
-              <button
-                className="secondary"
-                onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
-              >
-                חודש הבא
-              </button>
-            </div>
-
-            <h3 className="month-title">{formatMonthTitle(calendarDate)}</h3>
-            <p className="calendar-caption">ירוק = יום סגור, אדום = יום עם בעיות. המספר הקטן מציג כמה משמרות יש ביום.</p>
-
-            <div className="calendar-grid">
-              {['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳'].map((day) => (
-                <div key={day} className="weekday">{day}</div>
-              ))}
-
-              {monthCells.map(({ dateObj, muted }) => {
-                const dateKey = formatDateKey(dateObj)
-                const dayStats = getCalendarDayStats(dateKey)
-                const isToday = isSameDay(dateObj, new Date())
-                const isSelected = selectedDate === dateKey
-                const hasShifts = dayStats.total > 0
-
-                return (
-                  <button
-                    key={dateKey + String(muted)}
-                    className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${hasShifts ? 'has-shifts' : ''}`}
-                    onClick={() => openDayOverlay(dateKey)}
-                  >
-                    <div className="day-cell-top">
-                      <div className="day-number">{dateObj.getDate()}</div>
-                      {hasShifts ? <span className="day-count">{dayStats.total}</span> : null}
-                    </div>
-                    <div className="day-stats">
-                      {dayStats.fullyConfirmed > 0 ? <span className="green-number">{dayStats.fullyConfirmed}</span> : <span />}
-                      {dayStats.withProblems > 0 ? <span className="red-number">{dayStats.withProblems}</span> : null}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
+          <div className="calendar-nav">
+            <button
+              className="secondary small-button"
+              onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() - 1, 1))}
+            >
+              חודש קודם
+            </button>
+            <button className="secondary small-button" onClick={refreshAdminCalendar}>רענן</button>
+            <button
+              className="secondary small-button"
+              onClick={() => setCalendarDate(new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 1))}
+            >
+              חודש הבא
+            </button>
           </div>
-
-          <div className="card day-focus-card">
-            <div className="day-focus-head">
-              <div>
-                <div className="subtitle">פוקוס נוכחי</div>
-                <h2>{selectedDayOverview.title}</h2>
-              </div>
-
-              <div className="day-focus-actions">
-                <button onClick={() => openDayOverlay(selectedDate)}>פתח את היום</button>
-                <button className="secondary" onClick={() => openCreateShiftOverlay(selectedDate)}>הוסף משמרת</button>
-              </div>
-            </div>
-
-            <div className="stat-line">
-              <span className="mini-stat">משמרות {selectedDayOverview.stats.total}</span>
-              <span className="mini-stat success-text">סגורות {selectedDayOverview.stats.fullyConfirmed}</span>
-              <span className="mini-stat warning-text">דורשות טיפול {selectedDayOverview.stats.withProblems}</span>
-            </div>
-
-            {selectedDayOverview.shifts.length ? (
-              <div className="day-preview-list">
-                {selectedDayOverview.shifts.slice(0, 3).map((shift) => renderShiftCard(shift, true))}
-              </div>
-            ) : (
-              <div className="empty-state day-preview-empty">
-                <h3>אין משמרות ביום הזה</h3>
-                <p>לחץ על "הוסף משמרת" כדי לפתוח את היום ישירות מהלוח.</p>
-              </div>
-            )}
-          </div>
-        </>
+        </div>
       )}
 
-      {overlay && (
+      {overlay ? (
         <div className="overlay-backdrop" onClick={() => setOverlay(null)}>
-          <div className={`overlay-panel ${overlay.type === 'shift-details' || overlay.type === 'assign-users' ? 'overlay-panel-wide' : ''}`} onClick={(event) => event.stopPropagation()}>
-            <div className="overlay-header">
-              <div>
-                {overlay.type === 'day' && (
-                  <>
-                    <div className="overlay-eyebrow">מרכז שליטה יומי</div>
-                    <div className="overlay-title">{formatHumanDate(overlay.dateKey)}</div>
-                    <div className="subtitle">מכאן אפשר ליצור משמרת חדשה או לטפל במשמרות של היום.</div>
-                  </>
-                )}
-
-                {overlay.type === 'create-shift' && (
-                  <>
-                    <div className="overlay-eyebrow">יצירה מהירה</div>
-                    <div className="overlay-title">משמרת חדשה</div>
-                    <div className="subtitle">פתיחת משמרת בלי לעזוב את הלוח.</div>
-                  </>
-                )}
-
-                {overlay.type === 'edit-shift' && (
-                  <>
-                    <div className="overlay-eyebrow">עריכת משמרת</div>
-                    <div className="overlay-title">{overlay.shift.title}</div>
-                    <div className="subtitle">עדכון השעות והפרטים של המשמרת.</div>
-                  </>
-                )}
-
-                {overlay.type === 'shift-details' && (
-                  <>
-                    <div className="overlay-eyebrow">תמונת מצב</div>
-                    <div className="overlay-title">{overlay.shift?.title}</div>
-                    <div className="subtitle">{overlay.shift?.shift_date} · {overlay.shift?.start_time} - {overlay.shift?.end_time}</div>
-                  </>
-                )}
-
-                {overlay.type === 'assign-users' && (
-                  <>
-                    <div className="overlay-eyebrow">שיוך אנשים</div>
-                    <div className="overlay-title">{overlay.shift?.title}</div>
-                    <div className="subtitle">בחר את האנשים שתרצה לצרף למשמרת.</div>
-                  </>
-                )}
-              </div>
-
-              <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
-            </div>
-
-            {overlay.type === 'day' && (
+          <div
+            className={`overlay-panel ${overlay.type === 'shift-details' || overlay.type === 'assign-users' ? 'overlay-panel-wide' : ''}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {overlay.type === 'decline-reason' && (
               <>
-                <div className="overlay-metrics">
-                  <div className="metric-chip">
-                    <span className="metric-value">{selectedDayOverview.stats.total}</span>
-                    <span className="metric-label">משמרות</span>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">עדכון זמינות</div>
+                    <div className="overlay-title">{overlay.shift.title}</div>
+                    <div className="subtitle">יש לרשום סיבה אם אינך מגיע למשמרת.</div>
                   </div>
-                  <div className="metric-chip">
-                    <span className="metric-value success-text">{selectedDayOverview.stats.fullyConfirmed}</span>
-                    <span className="metric-label">סגורות</span>
-                  </div>
-                  <div className="metric-chip">
-                    <span className="metric-value warning-text">{selectedDayOverview.stats.withProblems}</span>
-                    <span className="metric-label">דורשות טיפול</span>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
+                <div className="modal-fields">
+                  <div>
+                    <div className="label">סיבה</div>
+                    <textarea
+                      value={noReason}
+                      onChange={(event) => setNoReason(event.target.value)}
+                      placeholder="למה אינך מגיע?"
+                    />
                   </div>
                 </div>
 
                 <div className="overlay-actions-bar">
-                  <button onClick={() => openCreateShiftOverlay(overlay.dateKey)}>משמרת חדשה לתאריך הזה</button>
+                  <button onClick={() => respondToShift(overlay.shift.id, 'no', noReason)}>שמור תשובה</button>
+                  <button className="secondary" onClick={() => setOverlay(null)}>ביטול</button>
+                </div>
+              </>
+            )}
+
+            {overlay.type === 'day' && (
+              <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">ניהול יום</div>
+                    <div className="overlay-title">{formatHumanDate(overlay.dateKey)}</div>
+                    <div className="subtitle">
+                      {selectedDayStats.total
+                        ? 'כל המשמרות של היום נמצאות כאן.'
+                        : 'אין עדיין משמרות ביום הזה.'}
+                    </div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
+                <div className="stat-line">
+                  <span className="mini-stat">משמרות {selectedDayStats.total}</span>
+                  <span className="mini-stat success-text">סגורות {selectedDayStats.fullyConfirmed}</span>
+                  <span className="mini-stat warning-text">דורשות טיפול {selectedDayStats.withProblems}</span>
+                </div>
+
+                <div className="overlay-actions-bar">
+                  <button onClick={() => openCreateShiftOverlay(overlay.dateKey)}>הוסף משמרת</button>
                   <button className="secondary" onClick={() => setOverlay(null)}>סגור</button>
                 </div>
 
                 <div className="overlay-body-stack">
-                  {selectedDayOverview.shifts.length ? (
-                    selectedDayOverview.shifts.map((shift) => renderShiftCard(shift, true))
+                  {selectedDayShifts.length ? (
+                    selectedDayShifts.map((shift) => renderAdminShiftCard(shift))
                   ) : (
                     <div className="empty-state">
                       <h3>אין משמרות ביום הזה</h3>
-                      <p>זה זמן טוב לפתוח משמרת חדשה ישירות לתאריך שבחרת.</p>
+                      <p>אפשר לפתוח מכאן משמרת חדשה בלי לצאת מהלוח.</p>
                     </div>
                   )}
                 </div>
@@ -903,13 +809,21 @@ export default function App() {
 
             {overlay.type === 'create-shift' && (
               <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">יצירת משמרת</div>
+                    <div className="overlay-title">משמרת חדשה</div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
                 <div className="modal-fields">
                   <div>
                     <div className="label">שם המשמרת</div>
                     <input
-                      placeholder="לדוגמה: בוקר גזרה"
                       value={newShift.title}
-                      onChange={(e) => setNewShift({ ...newShift, title: e.target.value })}
+                      onChange={(event) => setNewShift({ ...newShift, title: event.target.value })}
+                      placeholder="למשל: בוקר גזרה"
                     />
                   </div>
 
@@ -918,32 +832,42 @@ export default function App() {
                     <input
                       type="date"
                       value={newShift.shift_date}
-                      onChange={(e) => setNewShift({ ...newShift, shift_date: e.target.value })}
+                      onChange={(event) => setNewShift({ ...newShift, shift_date: event.target.value })}
                     />
                   </div>
 
                   <div className="form-grid">
-                    <input
-                      type="time"
-                      value={newShift.start_time}
-                      onChange={(e) => setNewShift({ ...newShift, start_time: e.target.value })}
-                    />
-                    <input
-                      type="time"
-                      value={newShift.end_time}
-                      onChange={(e) => setNewShift({ ...newShift, end_time: e.target.value })}
-                    />
+                    <div>
+                      <div className="label">שעת התחלה</div>
+                      <input
+                        type="time"
+                        value={newShift.start_time}
+                        onChange={(event) => setNewShift({ ...newShift, start_time: event.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="label">שעת סיום</div>
+                      <input
+                        type="time"
+                        value={newShift.end_time}
+                        onChange={(event) => setNewShift({ ...newShift, end_time: event.target.value })}
+                      />
+                    </div>
                   </div>
 
-                  <textarea
-                    placeholder="מה חשוב לדעת על המשמרת"
-                    value={newShift.notes}
-                    onChange={(e) => setNewShift({ ...newShift, notes: e.target.value })}
-                  />
+                  <div>
+                    <div className="label">הערות</div>
+                    <textarea
+                      value={newShift.notes}
+                      onChange={(event) => setNewShift({ ...newShift, notes: event.target.value })}
+                      placeholder="מידע חשוב על המשמרת"
+                    />
+                  </div>
                 </div>
 
                 <div className="overlay-actions-bar">
-                  <button onClick={createShift}>שמור משמרת</button>
+                  <button onClick={createShift}>שמור</button>
                   <button className="secondary" onClick={() => openDayOverlay(newShift.shift_date)}>חזור ליום</button>
                 </div>
               </>
@@ -951,12 +875,20 @@ export default function App() {
 
             {overlay.type === 'edit-shift' && (
               <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">עריכת משמרת</div>
+                    <div className="overlay-title">{overlay.shift.title}</div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
                 <div className="modal-fields">
                   <div>
                     <div className="label">שם המשמרת</div>
                     <input
                       value={editShift.title}
-                      onChange={(e) => setEditShift({ ...editShift, title: e.target.value })}
+                      onChange={(event) => setEditShift({ ...editShift, title: event.target.value })}
                     />
                   </div>
 
@@ -965,27 +897,37 @@ export default function App() {
                     <input
                       type="date"
                       value={editShift.shift_date}
-                      onChange={(e) => setEditShift({ ...editShift, shift_date: e.target.value })}
+                      onChange={(event) => setEditShift({ ...editShift, shift_date: event.target.value })}
                     />
                   </div>
 
                   <div className="form-grid">
-                    <input
-                      type="time"
-                      value={editShift.start_time}
-                      onChange={(e) => setEditShift({ ...editShift, start_time: e.target.value })}
-                    />
-                    <input
-                      type="time"
-                      value={editShift.end_time}
-                      onChange={(e) => setEditShift({ ...editShift, end_time: e.target.value })}
-                    />
+                    <div>
+                      <div className="label">שעת התחלה</div>
+                      <input
+                        type="time"
+                        value={editShift.start_time}
+                        onChange={(event) => setEditShift({ ...editShift, start_time: event.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <div className="label">שעת סיום</div>
+                      <input
+                        type="time"
+                        value={editShift.end_time}
+                        onChange={(event) => setEditShift({ ...editShift, end_time: event.target.value })}
+                      />
+                    </div>
                   </div>
 
-                  <textarea
-                    value={editShift.notes}
-                    onChange={(e) => setEditShift({ ...editShift, notes: e.target.value })}
-                  />
+                  <div>
+                    <div className="label">הערות</div>
+                    <textarea
+                      value={editShift.notes}
+                      onChange={(event) => setEditShift({ ...editShift, notes: event.target.value })}
+                    />
+                  </div>
                 </div>
 
                 <div className="overlay-actions-bar">
@@ -997,16 +939,22 @@ export default function App() {
 
             {overlay.type === 'shift-details' && (
               <>
-                {overlay.shift?.notes ? (
-                  <div className="note-box">
-                    <div className="label">הערות</div>
-                    <div className="list-sub">{overlay.shift.notes}</div>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">פרטי משמרת</div>
+                    <div className="overlay-title">{overlay.shift?.title}</div>
+                    <div className="subtitle">
+                      {overlay.shift?.shift_date} · {overlay.shift?.start_time} - {overlay.shift?.end_time}
+                    </div>
                   </div>
-                ) : null}
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
+                {overlay.shift?.notes ? <div className="note-box">הערות: {overlay.shift.notes}</div> : null}
 
                 <div className="overlay-actions-bar">
                   <button className="secondary" onClick={() => openAssignUsersOverlay(overlay.shift.id)}>שבץ אנשים</button>
-                  <button className="secondary" onClick={() => openEditShiftOverlay(overlay.shift)}>ערוך משמרת</button>
+                  <button className="secondary" onClick={() => openEditShiftOverlay(overlay.shift)}>ערוך</button>
                   <button className="secondary" onClick={() => openDayOverlay(overlay.shift.shift_date)}>חזור ליום</button>
                 </div>
 
@@ -1019,26 +967,28 @@ export default function App() {
                         <div className="list-sub">phone: {person.phone || '---'}</div>
                         <div className="list-sub">דרגה: {person.rank || '-'}</div>
                         <div className="list-sub">סוג שירות: {person.service_type || '-'}</div>
+
                         <div className="person-card-footer">
                           <span className={`badge ${statusBadgeClass(person.status)}`}>{statusText(person.status)}</span>
                         </div>
-                        {person.comment ? (
-                          <div className="note-box">
-                            <div className="label">סיבה</div>
-                            <div className="list-sub">{person.comment}</div>
-                          </div>
-                        ) : null}
+
+                        {person.comment ? <div className="note-box">סיבה: {person.comment}</div> : null}
+
                         <div className="actions compact-actions">
                           {person.username || person.phone ? (
-                            <button className="secondary" onClick={() => openTelegramChat(person.username, person.phone)}>פתח צ׳אט</button>
+                            <button className="secondary small-button" onClick={() => openTelegramChat(person.username, person.phone)}>
+                              פתח צ׳אט
+                            </button>
                           ) : (
-                            <button className="secondary" disabled>אין נתונים לצ׳אט</button>
+                            <button className="secondary small-button" disabled>אין פרטי צ׳אט</button>
                           )}
+
                           {person.phone ? (
-                            <button className="secondary" onClick={() => copyText(person.phone)}>העתק טלפון</button>
+                            <button className="secondary small-button" onClick={() => copyText(person.phone)}>העתק טלפון</button>
                           ) : null}
+
                           {person.username ? (
-                            <button className="secondary" onClick={() => copyText(person.username)}>העתק username</button>
+                            <button className="secondary small-button" onClick={() => copyText(person.username)}>העתק username</button>
                           ) : null}
                         </div>
                       </div>
@@ -1046,7 +996,7 @@ export default function App() {
                   ) : (
                     <div className="empty-state">
                       <h3>אין אנשים משויכים</h3>
-                      <p>אפשר לשייך אנשים מהמסך הזה בלי לחזור אחורה.</p>
+                      <p>אפשר לצרף אנשים למשמרת ישירות מהמסך הזה.</p>
                     </div>
                   )}
                 </div>
@@ -1055,6 +1005,14 @@ export default function App() {
 
             {overlay.type === 'assign-users' && (
               <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="overlay-eyebrow">שיוך אנשים</div>
+                    <div className="overlay-title">{overlay.shift?.title}</div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
                 <div className="checkbox-list">
                   {overlayUsers.length ? (
                     overlayUsers.map((user) => (
@@ -1062,7 +1020,7 @@ export default function App() {
                         <div className="checkbox-row">
                           <input
                             type="checkbox"
-                            checked={selectedUserIds.includes(user.id)}
+                            checked={selectedUserIds.includes(Number(user.id))}
                             onChange={() => toggleUserSelection(user.id)}
                           />
                           <div>
@@ -1083,13 +1041,13 @@ export default function App() {
 
                 <div className="overlay-actions-bar">
                   <button onClick={assignUsersToShift}>שמור שיוך</button>
-                  <button className="secondary" onClick={() => openShiftDetailsOverlay(overlay.shift.id)}>חזור לפרטי המשמרת</button>
+                  <button className="secondary" onClick={() => openShiftDetailsOverlay(overlay.shift.id)}>חזור לפרטים</button>
                 </div>
               </>
             )}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
