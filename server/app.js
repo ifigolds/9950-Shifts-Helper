@@ -11,6 +11,7 @@ const meRoutes = require('./routes/me');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
+const clientDir = path.join(__dirname, '..', 'client');
 
 app.use(cors({
   origin: [
@@ -25,18 +26,43 @@ app.use(express.json());
 
 initDb();
 
-// запускаем бота
 require('./bot');
 
-// старый client можно оставить как fallback
-app.use(express.static(path.join(__dirname, '..', 'client')));
+// Telegram WebView can cache static files aggressively, so keep the mini app uncached.
+app.use((req, res, next) => {
+  if (
+    req.path === '/' ||
+    req.path.endsWith('.js') ||
+    req.path.endsWith('.css') ||
+    req.path.endsWith('.html')
+  ) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  }
+
+  next();
+});
+
+app.use(express.static(clientDir, {
+  etag: false,
+  lastModified: false
+}));
 
 app.use('/admin', adminRoutes);
 app.use('/auth', authRoutes);
 app.use('/me', meRoutes);
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'client', 'index.html'));
+  res.sendFile(path.join(clientDir, 'index.html'), {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Surrogate-Control': 'no-store'
+    }
+  });
 });
 
 const PORT = process.env.PORT || 3000;
