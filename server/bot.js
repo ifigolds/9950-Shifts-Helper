@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { run, get, all } = require('./dbUtils');
+const { startShiftReminders } = require('./shiftReminders');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
@@ -701,5 +702,6 @@ bot.on('callback_query', async (query) => {
 bootstrapAdmins().catch((err) => {
   console.error('Initial bootstrapAdmins error:', err.message);
 });
+startShiftReminders(bot);
 
 module.exports = { bot };

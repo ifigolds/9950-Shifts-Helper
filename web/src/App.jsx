@@ -62,6 +62,10 @@ function normalizePhone(phone) {
   return String(phone || '').replace(/[^\d+]/g, '')
 }
 
+function personName(person) {
+  return [person.first_name, person.last_name].filter(Boolean).join(' ') || 'לא צוין'
+}
+
 function isSameDay(dateA, dateB) {
   return formatDateKey(dateA) === formatDateKey(dateB)
 }
@@ -615,6 +619,8 @@ export default function App() {
   }
 
   function renderUserShiftCard(shift) {
+    const showReplacement = shift.is_active && shift.replacement_people?.length
+
     return (
       <div key={shift.id} className="shift-card-shell">
         <div className="shift-card-head">
@@ -629,6 +635,47 @@ export default function App() {
 
         {shift.notes ? <div className="note-box">הערות: {shift.notes}</div> : null}
         {shift.comment ? <div className="note-box">סיבה שסומנה: {shift.comment}</div> : null}
+
+        {showReplacement ? (
+          <div className="handover-panel">
+            <div className="handover-head">
+              <div>
+                <div className="section-tag">NEXT RELIEF</div>
+                <strong>מי מחליף אותך</strong>
+              </div>
+              {shift.next_shift ? (
+                <span className="mini-stat">
+                  {shift.next_shift.start_time} · {shift.next_shift.title}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="relief-list">
+              {shift.replacement_people.map((person) => (
+                <div key={`${shift.id}-${person.user_id}`} className="relief-card">
+                  <div>
+                    <div className="list-main">{personName(person)}</div>
+                    <div className="list-sub">טלפון: {person.phone || '---'}</div>
+                    <div className="list-sub">username: {person.username ? `@${String(person.username).replace(/^@/, '')}` : '---'}</div>
+                  </div>
+
+                  <div className="actions compact-actions">
+                    {person.username || person.phone ? (
+                      <button className="secondary small-button" onClick={() => openTelegramChat(person.username, person.phone)}>
+                        פתח צ׳אט
+                      </button>
+                    ) : null}
+                    {person.phone ? (
+                      <button className="secondary small-button" onClick={() => copyText(person.phone)}>
+                        העתק טלפון
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="response-actions">
           <button
@@ -694,21 +741,21 @@ export default function App() {
             </p>
           </div>
 
-          <div className={`mode-grid ${profile.user.role === 'admin' ? '' : 'single'}`}>
+          <div className="mode-grid single">
             <button className="mode-card" onClick={enterUserMode}>
               <span className="section-tag">PERSONAL ACCESS</span>
               <strong>כניסה רגילה</strong>
               <small>כל המשמרות שלך, תשובה מהירה ומעקב סטטוס במקום אחד.</small>
             </button>
-
-            {profile.user.role === 'admin' ? (
-              <button className="mode-card" onClick={enterAdminMode}>
-                <span className="section-tag">COMMAND ACCESS</span>
-                <strong>כניסת מנהל</strong>
-                <small>לוח חודשי נקי, פתיחת יום בקליק וניהול משמרות מתוך overlay.</small>
-              </button>
-            ) : null}
           </div>
+
+          {profile.user.role === 'admin' ? (
+            <div className="admin-entry-row">
+              <button className="ghost-admin-link" onClick={enterAdminMode}>
+                כניסת מנהל
+              </button>
+            </div>
+          ) : null}
         </section>
       )}
 
@@ -725,6 +772,17 @@ export default function App() {
               <h2>כל המשמרות שלי</h2>
             </div>
             <span className="count-chip">{userShifts.length}</span>
+          </div>
+
+          <div className="profile-stats-grid">
+            <div className="profile-stat-card">
+              <span className="section-tag">COMPLETED SHIFTS</span>
+              <strong>{profile?.stats?.completed_shifts ?? 0}</strong>
+            </div>
+            <div className="profile-stat-card">
+              <span className="section-tag">COMPLETED HOURS</span>
+              <strong>{profile?.stats?.completed_hours ?? 0}</strong>
+            </div>
           </div>
 
           {userShifts.length ? (

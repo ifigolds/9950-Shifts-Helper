@@ -25,6 +25,17 @@ function initDb() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `, [], () => {});
+    db.run(`
+      CREATE TABLE IF NOT EXISTS shift_notification_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        notification_key TEXT UNIQUE NOT NULL,
+        notification_type TEXT NOT NULL,
+        shift_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        related_shift_id INTEGER,
+        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `, [], () => {});
 
     console.log('Database initialized');
   });
