@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 
 const API_BASE = 'https://nine950-backend.onrender.com'
+const LOGO_SRC = '/logo-9950.png'
+const MIN_BOOT_MS = 1400
 const WEEKDAYS = ['ב', 'ג', 'ד', 'ה', 'ו', 'ש', 'א']
 
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
   if (status === 'no') return 'לא מגיע'
   if (status === 'maybe') return 'לא בטוח'
-  return 'ממתין לתשובה'
+  return 'ממתין'
 }
 
 function statusBadgeClass(status) {
@@ -18,10 +20,10 @@ function statusBadgeClass(status) {
 }
 
 function formatDateKey(dateObj) {
-  const y = dateObj.getFullYear()
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0')
-  const d = String(dateObj.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  const year = dateObj.getFullYear()
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+  const day = String(dateObj.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function parseDateKey(dateKey) {
@@ -72,6 +74,53 @@ function isShiftFullyConfirmed(shift) {
   return Number(shift.total || 0) > 0 && getShiftProblemCount(shift) === 0
 }
 
+function LoadingScreen() {
+  return (
+    <div className="boot-screen">
+      <div className="boot-core">
+        <div className="boot-logo-wrap">
+          <span className="boot-ring" />
+          <img src={LOGO_SRC} alt="9950" className="boot-logo" />
+        </div>
+
+        <div className="boot-copy">
+          <div className="section-tag">9950 SHIFT SYSTEM</div>
+          <h1 className="boot-title">מערכת משמרות</h1>
+          <p className="boot-subtitle">מאתחל ממשק מבצעי ומסנכרן נתוני יחידה</p>
+        </div>
+
+        <div className="boot-progress">
+          <span />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function BrandMark({ compact = false }) {
+  return (
+    <div className={`brand-mark ${compact ? 'brand-mark-compact' : ''}`}>
+      <img src={LOGO_SRC} alt="9950" className="brand-logo" />
+      <div className="brand-copy">
+        <div className="section-tag">UNIT 9950</div>
+        <div className="brand-title">מערכת משמרות</div>
+      </div>
+    </div>
+  )
+}
+
+function StatusScreen({ title, text }) {
+  return (
+    <div className="screen screen-centered">
+      <div className="status-shell">
+        <BrandMark compact />
+        <h2>{title}</h2>
+        {text ? <p>{text}</p> : null}
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -96,7 +145,7 @@ export default function App() {
     const tg = window.Telegram?.WebApp
     const initData = tg?.initData || 'debug_user=1933391248'
 
-    const res = await fetch(API_BASE + path, {
+    const response = await fetch(API_BASE + path, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -105,20 +154,26 @@ export default function App() {
       },
     })
 
-    const text = await res.text()
+    const text = await response.text()
 
     let data
     try {
       data = JSON.parse(text)
     } catch {
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`)
+      throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`)
     }
 
-    if (!res.ok) {
-      throw new Error(data.error || `HTTP ${res.status}`)
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`)
     }
 
     return data
+  }
+
+  function syncCalendarToDateKey(dateKey) {
+    const parsedDate = parseDateKey(dateKey)
+    setSelectedDate(dateKey)
+    setCalendarDate(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1))
   }
 
   async function loadUserShifts() {
@@ -165,11 +220,11 @@ export default function App() {
     const firstDayOfMonth = new Date(current.getFullYear(), current.getMonth(), 1)
     const startWeekday = (firstDayOfMonth.getDay() + 6) % 7
     const daysInMonth = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate()
-    const daysInPrevMonth = new Date(current.getFullYear(), current.getMonth(), 0).getDate()
+    const daysInPreviousMonth = new Date(current.getFullYear(), current.getMonth(), 0).getDate()
     const cells = []
 
     for (let i = startWeekday - 1; i >= 0; i -= 1) {
-      const dateObj = new Date(current.getFullYear(), current.getMonth() - 1, daysInPrevMonth - i)
+      const dateObj = new Date(current.getFullYear(), current.getMonth() - 1, daysInPreviousMonth - i)
       cells.push({ dateObj, muted: true })
     }
 
@@ -212,7 +267,12 @@ export default function App() {
   }, [selectedDayShifts])
 
   useEffect(() => {
+    let cancelled = false
+    let timeoutId
+
     async function init() {
+      const bootStartedAt = Date.now()
+
       try {
         const tg = window.Telegram?.WebApp
         if (tg) {
@@ -221,15 +281,33 @@ export default function App() {
         }
 
         const data = await api('/me/profile')
-        setProfile(data)
+        if (!cancelled) {
+          setProfile(data)
+        }
       } catch (err) {
-        setError(err.message || 'שגיאה')
+        if (!cancelled) {
+          setError(err.message || 'שגיאה')
+        }
       } finally {
-        setLoading(false)
+        const elapsed = Date.now() - bootStartedAt
+        const remaining = Math.max(0, MIN_BOOT_MS - elapsed)
+
+        timeoutId = window.setTimeout(() => {
+          if (!cancelled) {
+            setLoading(false)
+          }
+        }, remaining)
       }
     }
 
     init()
+
+    return () => {
+      cancelled = true
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -269,9 +347,8 @@ export default function App() {
         throw new Error('אין לך הרשאת מנהל')
       }
 
-      const today = new Date()
-      setSelectedDate(formatDateKey(today))
-      setCalendarDate(new Date(today.getFullYear(), today.getMonth(), 1))
+      const today = formatDateKey(new Date())
+      syncCalendarToDateKey(today)
       await loadAdminShifts()
       setOverlay(null)
       setMode('admin')
@@ -315,7 +392,7 @@ export default function App() {
   }
 
   function openDayOverlay(dateKey) {
-    setSelectedDate(dateKey)
+    syncCalendarToDateKey(dateKey)
     setOverlay({ type: 'day', dateKey })
   }
 
@@ -369,9 +446,7 @@ export default function App() {
       })
 
       await loadAdminShifts()
-      setSelectedDate(newShift.shift_date)
-      const [year, month] = newShift.shift_date.split('-').map(Number)
-      setCalendarDate(new Date(year, month - 1, 1))
+      syncCalendarToDateKey(newShift.shift_date)
       setOverlay({ type: 'day', dateKey: newShift.shift_date })
     } catch (err) {
       setError(err.message || 'שגיאה ביצירת משמרת')
@@ -389,9 +464,7 @@ export default function App() {
       })
 
       await loadAdminShifts()
-      setSelectedDate(editShift.shift_date)
-      const [year, month] = editShift.shift_date.split('-').map(Number)
-      setCalendarDate(new Date(year, month - 1, 1))
+      syncCalendarToDateKey(editShift.shift_date)
       setOverlay({ type: 'day', dateKey: editShift.shift_date })
     } catch (err) {
       setError(err.message || 'שגיאה בעדכון משמרת')
@@ -412,7 +485,7 @@ export default function App() {
       await loadAdminShifts()
 
       if (shift?.shift_date) {
-        setSelectedDate(shift.shift_date)
+        syncCalendarToDateKey(shift.shift_date)
         setOverlay({ type: 'day', dateKey: shift.shift_date })
       } else {
         setOverlay(null)
@@ -492,8 +565,8 @@ export default function App() {
   function renderAdminShiftActions(shift) {
     return (
       <div className="actions compact-actions">
-        <button className="small-button" onClick={() => openShiftDetailsOverlay(shift.id)}>פרטים</button>
-        <button className="secondary small-button" onClick={() => openAssignUsersOverlay(shift.id)}>שבץ אנשים</button>
+        <button className="secondary small-button" onClick={() => openShiftDetailsOverlay(shift.id)}>פרטים</button>
+        <button className="secondary small-button" onClick={() => openAssignUsersOverlay(shift.id)}>שבץ</button>
         <button className="secondary small-button" onClick={() => openEditShiftOverlay(shift)}>ערוך</button>
         <button className="danger small-button" onClick={() => deleteShift(shift.id)}>מחק</button>
       </div>
@@ -508,21 +581,25 @@ export default function App() {
       ? 'אין משובצים'
       : problemCount > 0
         ? `דורש טיפול ${problemCount}`
-        : 'סגור'
+        : 'מוכן'
 
     return (
-      <div key={shift.id} className="shift-card-shell">
+      <div
+        key={shift.id}
+        className={`shift-card-shell ${problemCount > 0 ? 'shift-card-alert' : 'shift-card-ready'}`}
+      >
         <div className="shift-card-head">
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
           </div>
+
           <div className="status-cluster">
             <span className={`badge ${badgeTone}`}>{badgeLabel}</span>
           </div>
         </div>
 
-        {shift.notes ? <div className="list-sub shift-notes">הערות: {shift.notes}</div> : null}
+        {shift.notes ? <div className="note-box">הערות: {shift.notes}</div> : null}
 
         <div className="stat-line">
           <span className="mini-stat">סה״כ {total}</span>
@@ -539,13 +616,14 @@ export default function App() {
 
   function renderUserShiftCard(shift) {
     return (
-      <div key={shift.id} className="shift-card-shell user-shift-card">
+      <div key={shift.id} className="shift-card-shell">
         <div className="shift-card-head">
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
             <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
           </div>
+
           <span className={`badge ${statusBadgeClass(shift.status)}`}>{statusText(shift.status)}</span>
         </div>
 
@@ -559,12 +637,14 @@ export default function App() {
           >
             מגיע
           </button>
+
           <button
             className={`warning small-button ${shift.status === 'maybe' ? 'is-active' : ''}`}
             onClick={() => respondToShift(shift.id, 'maybe')}
           >
             אולי
           </button>
+
           <button
             className={`danger small-button ${shift.status === 'no' ? 'is-active' : ''}`}
             onClick={() => openDeclineOverlay(shift)}
@@ -577,111 +657,95 @@ export default function App() {
   }
 
   if (loading) {
-    return <div className="screen">טוען...</div>
+    return <LoadingScreen />
   }
 
   if (error && !profile) {
-    return (
-      <div className="screen">
-        <div className="card center">
-          <h2>שגיאה</h2>
-          <p>{error}</p>
-        </div>
-      </div>
-    )
+    return <StatusScreen title="שגיאה" text={error} />
   }
 
   if (!profile?.registered) {
-    return (
-      <div className="screen">
-        <div className="card center">
-          <h2>אינך רשום במערכת</h2>
-          <p>יש לחזור לבוט ולשלוח /start</p>
-        </div>
-      </div>
-    )
+    return <StatusScreen title="אינך רשום במערכת" text="יש לחזור לבוט ולשלוח /start" />
   }
 
   if (profile.user.registration_status === 'pending_review') {
-    return (
-      <div className="screen">
-        <div className="card center">
-          <h2>הבקשה שלך ממתינה לאישור</h2>
-        </div>
-      </div>
-    )
+    return <StatusScreen title="הבקשה שלך ממתינה לאישור" />
   }
 
   if (profile.user.registration_status === 'rejected') {
-    return (
-      <div className="screen">
-        <div className="card center">
-          <h2>ההרשמה נדחתה</h2>
-          <p>יש לשלוח /start מחדש בבוט</p>
-        </div>
-      </div>
-    )
+    return <StatusScreen title="ההרשמה נדחתה" text="יש לשלוח /start מחדש בבוט" />
   }
 
   return (
-    <div className={`screen ${mode === 'admin' ? 'screen-admin' : ''} ${overlay ? 'overlay-open' : ''}`}>
-      {mode === 'select' && (
-        <div className="card hero">
-          <h1>מערכת משמרות</h1>
-          <p>בחר איך להיכנס</p>
-        </div>
-      )}
-
+    <div className={`screen ${mode === 'admin' ? 'screen-admin' : ''}`}>
       {error ? (
-        <div className="card error-card">
-          <p>{error}</p>
+        <div className="flash-message">
+          <span className="flash-dot" />
+          <span>{error}</span>
         </div>
       ) : null}
 
       {mode === 'select' && (
-        <div className="entry-screen">
-          <div className="card entry-card center">
-            <h2>שלום {profile.user.first_name || ''}</h2>
-            <p>כניסה רגילה מציגה את כל המשמרות ששובצת אליהן.</p>
-            <button className="entry-button" onClick={enterUserMode}>כניסה רגילה</button>
+        <section className="landing-shell">
+          <div className="landing-hero">
+            <BrandMark />
+            <p className="landing-copy">
+              ממשק יבש, מהיר ומדויק לניהול משמרות. בלי זכוכית, בלי גימיקים, רק שליטה ברורה על מה שקורה.
+            </p>
           </div>
 
-          {profile.user.role === 'admin' ? (
-            <div className="card entry-card center">
-              <h2>כניסת מנהל</h2>
-              <p>לוח עבודה נקי עם קליק על יום כדי לנהל את כל המשמרות שבו.</p>
-              <button className="entry-button secondary" onClick={enterAdminMode}>כניסת מנהל</button>
-            </div>
-          ) : null}
-        </div>
+          <div className={`mode-grid ${profile.user.role === 'admin' ? '' : 'single'}`}>
+            <button className="mode-card" onClick={enterUserMode}>
+              <span className="section-tag">PERSONAL ACCESS</span>
+              <strong>כניסה רגילה</strong>
+              <small>כל המשמרות שלך, תשובה מהירה ומעקב סטטוס במקום אחד.</small>
+            </button>
+
+            {profile.user.role === 'admin' ? (
+              <button className="mode-card" onClick={enterAdminMode}>
+                <span className="section-tag">COMMAND ACCESS</span>
+                <strong>כניסת מנהל</strong>
+                <small>לוח חודשי נקי, פתיחת יום בקליק וניהול משמרות מתוך overlay.</small>
+              </button>
+            ) : null}
+          </div>
+        </section>
       )}
 
       {mode === 'user' && (
-        <div className="card user-screen-card">
-          <div className="user-screen-head">
-            <div>
-              <div className="subtitle">כניסה רגילה</div>
-              <h2>כל המשמרות שלי</h2>
-            </div>
+        <section className="workspace-shell">
+          <div className="workspace-topbar">
+            <BrandMark compact />
             <button className="secondary small-button" onClick={() => setMode('select')}>חזרה</button>
           </div>
 
+          <div className="workspace-head">
+            <div>
+              <div className="section-tag">PERSONAL BOARD</div>
+              <h2>כל המשמרות שלי</h2>
+            </div>
+            <span className="count-chip">{userShifts.length}</span>
+          </div>
+
           {userShifts.length ? (
-            <div className="user-shift-list">
+            <div className="shift-list">
               {userShifts.map((shift) => renderUserShiftCard(shift))}
             </div>
           ) : (
             <div className="empty-state">
               <h3>אין לך משמרות כרגע</h3>
-              <p>ברגע שאדמין ישבץ אותך, הן יופיעו כאן כרשימה מלאה.</p>
+              <p>ברגע שאדמין ישבץ אותך, הן יופיעו כאן אוטומטית.</p>
             </div>
           )}
-        </div>
+        </section>
       )}
 
       {mode === 'admin' && (
-        <div className="admin-calendar-shell">
-          <div className="admin-month">{formatMonthTitle(calendarDate)}</div>
+        <section className="command-shell">
+          <div className="command-month">
+            <div className="section-tag">COMMAND BOARD</div>
+            <div className="calendar-title">{formatMonthTitle(calendarDate)}</div>
+          </div>
 
           <div className="calendar-grid">
             {WEEKDAYS.map((day) => (
@@ -694,21 +758,27 @@ export default function App() {
               const hasShifts = dayStats.total > 0
               const isToday = isSameDay(dateObj, new Date())
               const isSelected = selectedDate === dateKey
+              const toneClass = dayStats.withProblems > 0 ? 'has-issues' : dayStats.fullyConfirmed > 0 ? 'is-ready' : ''
 
               return (
                 <button
                   key={`${dateKey}-${muted ? 'muted' : 'live'}`}
-                  className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${hasShifts ? 'has-shifts' : ''}`}
+                  className={`day-cell ${muted ? 'muted' : ''} ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${toneClass}`}
                   onClick={() => openDayOverlay(dateKey)}
                 >
                   <div className="day-cell-top">
                     <span className="day-number">{dateObj.getDate()}</span>
-                    {hasShifts ? <span className="day-count">{dayStats.total}</span> : null}
+                    {hasShifts ? <span className="day-chip">{dayStats.total}x</span> : null}
                   </div>
 
                   <div className="day-stats">
-                    {dayStats.fullyConfirmed > 0 ? <span className="green-number">{dayStats.fullyConfirmed}</span> : <span />}
-                    {dayStats.withProblems > 0 ? <span className="red-number">{dayStats.withProblems}</span> : null}
+                    {dayStats.withProblems > 0 ? (
+                      <span className="day-chip day-chip-alert">!{dayStats.withProblems}</span>
+                    ) : dayStats.fullyConfirmed > 0 ? (
+                      <span className="day-chip day-chip-ok">OK</span>
+                    ) : (
+                      <span />
+                    )}
                   </div>
                 </button>
               )
@@ -730,7 +800,7 @@ export default function App() {
               חודש הבא
             </button>
           </div>
-        </div>
+        </section>
       )}
 
       {overlay ? (
@@ -743,9 +813,9 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">עדכון זמינות</div>
+                    <div className="section-tag">RESPONSE UPDATE</div>
                     <div className="overlay-title">{overlay.shift.title}</div>
-                    <div className="subtitle">יש לרשום סיבה אם אינך מגיע למשמרת.</div>
+                    <div className="overlay-subtitle">יש לרשום סיבה אם אינך מגיע למשמרת.</div>
                   </div>
                   <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
                 </div>
@@ -772,9 +842,9 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">ניהול יום</div>
+                    <div className="section-tag">DAY CONTROL</div>
                     <div className="overlay-title">{formatHumanDate(overlay.dateKey)}</div>
-                    <div className="subtitle">
+                    <div className="overlay-subtitle">
                       {selectedDayStats.total
                         ? 'כל המשמרות של היום נמצאות כאן.'
                         : 'אין עדיין משמרות ביום הזה.'}
@@ -786,7 +856,7 @@ export default function App() {
                 <div className="stat-line">
                   <span className="mini-stat">משמרות {selectedDayStats.total}</span>
                   <span className="mini-stat success-text">סגורות {selectedDayStats.fullyConfirmed}</span>
-                  <span className="mini-stat warning-text">דורשות טיפול {selectedDayStats.withProblems}</span>
+                  <span className="mini-stat warning-text">בעייתיות {selectedDayStats.withProblems}</span>
                 </div>
 
                 <div className="overlay-actions-bar">
@@ -811,7 +881,7 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">יצירת משמרת</div>
+                    <div className="section-tag">CREATE SHIFT</div>
                     <div className="overlay-title">משמרת חדשה</div>
                   </div>
                   <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
@@ -877,7 +947,7 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">עריכת משמרת</div>
+                    <div className="section-tag">EDIT SHIFT</div>
                     <div className="overlay-title">{overlay.shift.title}</div>
                   </div>
                   <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
@@ -941,9 +1011,9 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">פרטי משמרת</div>
+                    <div className="section-tag">SHIFT DETAILS</div>
                     <div className="overlay-title">{overlay.shift?.title}</div>
-                    <div className="subtitle">
+                    <div className="overlay-subtitle">
                       {overlay.shift?.shift_date} · {overlay.shift?.start_time} - {overlay.shift?.end_time}
                     </div>
                   </div>
@@ -953,7 +1023,7 @@ export default function App() {
                 {overlay.shift?.notes ? <div className="note-box">הערות: {overlay.shift.notes}</div> : null}
 
                 <div className="overlay-actions-bar">
-                  <button className="secondary" onClick={() => openAssignUsersOverlay(overlay.shift.id)}>שבץ אנשים</button>
+                  <button className="secondary" onClick={() => openAssignUsersOverlay(overlay.shift.id)}>שבץ</button>
                   <button className="secondary" onClick={() => openEditShiftOverlay(overlay.shift)}>ערוך</button>
                   <button className="secondary" onClick={() => openDayOverlay(overlay.shift.shift_date)}>חזור ליום</button>
                 </div>
@@ -962,13 +1032,14 @@ export default function App() {
                   {overlayPeople.length ? (
                     overlayPeople.map((person, index) => (
                       <div key={`${person.user_id}-${index}`} className="shift-card-shell">
-                        <div className="list-main">{person.first_name} {person.last_name}</div>
-                        <div className="list-sub">username: {person.username || '---'}</div>
-                        <div className="list-sub">phone: {person.phone || '---'}</div>
-                        <div className="list-sub">דרגה: {person.rank || '-'}</div>
-                        <div className="list-sub">סוג שירות: {person.service_type || '-'}</div>
-
-                        <div className="person-card-footer">
+                        <div className="shift-card-head">
+                          <div>
+                            <div className="list-main">{person.first_name} {person.last_name}</div>
+                            <div className="list-sub">username: {person.username || '---'}</div>
+                            <div className="list-sub">phone: {person.phone || '---'}</div>
+                            <div className="list-sub">דרגה: {person.rank || '-'}</div>
+                            <div className="list-sub">סוג שירות: {person.service_type || '-'}</div>
+                          </div>
                           <span className={`badge ${statusBadgeClass(person.status)}`}>{statusText(person.status)}</span>
                         </div>
 
@@ -1007,7 +1078,7 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="overlay-eyebrow">שיוך אנשים</div>
+                    <div className="section-tag">ASSIGN USERS</div>
                     <div className="overlay-title">{overlay.shift?.title}</div>
                   </div>
                   <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
