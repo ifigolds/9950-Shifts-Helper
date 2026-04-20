@@ -4,10 +4,14 @@
   --panel: #151b15;
   --panel-soft: #1b221b;
   --panel-hard: #202820;
+  --panel-contrast: #242d24;
+  --panel-muted: #111611;
   --line: #2f3a30;
   --line-strong: #465347;
+  --line-soft: rgba(255, 255, 255, 0.05);
   --text: #eef1e8;
   --muted: #899486;
+  --muted-soft: #667164;
   --accent: #7d8a72;
   --accent-strong: #c0cab6;
   --success: #95af78;
@@ -177,16 +181,29 @@ textarea {
 .command-shell,
 .status-shell,
 .overlay-panel {
-  background: linear-gradient(180deg, rgba(22, 28, 22, 0.98) 0%, rgba(15, 19, 15, 0.98) 100%);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(24, 31, 24, 0.98) 0%, rgba(14, 18, 14, 0.99) 100%);
+  border: 1px solid var(--line-soft);
   border-radius: 22px;
-  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .landing-shell,
 .workspace-shell,
 .command-shell {
   padding: 18px;
+}
+
+.landing-shell {
+  border-color: rgba(192, 202, 182, 0.08);
+}
+
+.workspace-shell {
+  background: linear-gradient(180deg, rgba(23, 29, 23, 0.98) 0%, rgba(12, 16, 12, 0.99) 100%);
+}
+
+.command-shell {
+  background: linear-gradient(180deg, rgba(20, 26, 20, 0.98) 0%, rgba(10, 14, 10, 0.99) 100%);
+  border-color: rgba(192, 202, 182, 0.12);
 }
 
 .status-shell {
@@ -256,6 +273,20 @@ textarea {
   max-width: 36rem;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.app-footer {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+  color: var(--muted-soft);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .mode-grid {
@@ -367,9 +398,10 @@ textarea {
 
 .profile-stat-card {
   padding: 12px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(192, 202, 182, 0.12);
   border-radius: 16px;
-  background: linear-gradient(180deg, #161c16 0%, #101510 100%);
+  background: linear-gradient(180deg, #202820 0%, #151b15 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
 .profile-stat-card strong {
@@ -390,18 +422,26 @@ textarea {
 .shift-card-shell,
 .note-box,
 .empty-state {
-  background: linear-gradient(180deg, #1b221b 0%, #151a15 100%);
-  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #1d251d 0%, #141914 100%);
+  border: 1px solid rgba(192, 202, 182, 0.08);
   border-radius: 18px;
   padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.shift-card-shell {
+  background: linear-gradient(180deg, #202820 0%, #151b15 100%);
+  border-color: rgba(192, 202, 182, 0.1);
 }
 
 .shift-card-ready {
-  border-color: rgba(149, 175, 120, 0.3);
+  border-color: rgba(149, 175, 120, 0.4);
+  box-shadow: inset 0 1px 0 rgba(149, 175, 120, 0.08);
 }
 
 .shift-card-alert {
-  border-color: rgba(217, 119, 98, 0.34);
+  border-color: rgba(217, 119, 98, 0.42);
+  box-shadow: inset 0 1px 0 rgba(217, 119, 98, 0.08);
 }
 
 .list-main {
@@ -419,8 +459,14 @@ textarea {
 
 .note-box {
   margin-top: 12px;
-  color: #d7ddd0;
+  background: linear-gradient(180deg, #161b16 0%, #111611 100%);
+  border-color: rgba(255, 255, 255, 0.04);
+  color: #cfd6c8;
   line-height: 1.55;
+}
+
+.empty-state {
+  background: linear-gradient(180deg, #191f19 0%, #121712 100%);
 }
 
 .response-actions,
@@ -456,9 +502,10 @@ textarea {
 .handover-panel {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid rgba(192, 202, 182, 0.16);
+  border: 1px solid rgba(192, 202, 182, 0.2);
   border-radius: 16px;
-  background: linear-gradient(180deg, #1b211b 0%, #141914 100%);
+  background: linear-gradient(180deg, #242d24 0%, #181f18 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .handover-head {
@@ -484,9 +531,9 @@ textarea {
 
 .relief-card {
   padding: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(192, 202, 182, 0.08);
   border-radius: 14px;
-  background: rgba(0, 0, 0, 0.12);
+  background: linear-gradient(180deg, rgba(12, 15, 12, 0.2) 0%, rgba(0, 0, 0, 0.18) 100%);
 }
 
 .problem-strip .badge {
@@ -579,6 +626,8 @@ textarea {
 .command-month {
   text-align: center;
   padding-bottom: 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .calendar-title {
@@ -605,9 +654,9 @@ textarea {
 .day-cell {
   min-height: 82px;
   padding: 9px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(192, 202, 182, 0.08);
   border-radius: 16px;
-  background: linear-gradient(180deg, #171d17 0%, #101410 100%);
+  background: linear-gradient(180deg, #171e17 0%, #111611 100%);
   color: var(--text);
   display: flex;
   flex-direction: column;
@@ -629,16 +678,17 @@ textarea {
 }
 
 .day-cell.selected {
-  background: linear-gradient(180deg, #202820 0%, #171d17 100%);
+  background: linear-gradient(180deg, #283128 0%, #1a211a 100%);
   border-color: rgba(192, 202, 182, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .day-cell.has-issues {
-  border-color: rgba(217, 119, 98, 0.34);
+  border-color: rgba(217, 119, 98, 0.42);
 }
 
 .day-cell.is-ready {
-  border-color: rgba(149, 175, 120, 0.3);
+  border-color: rgba(149, 175, 120, 0.4);
 }
 
 .day-cell-top,
@@ -695,6 +745,8 @@ textarea {
   max-height: min(92vh, 920px);
   overflow: auto;
   padding: 18px;
+  border-color: rgba(192, 202, 182, 0.14);
+  background: linear-gradient(180deg, rgba(26, 33, 26, 0.99) 0%, rgba(14, 18, 14, 0.99) 100%);
 }
 
 .overlay-panel-wide {
@@ -753,6 +805,7 @@ textarea {
 
 .checkbox-card {
   cursor: pointer;
+  background: linear-gradient(180deg, #1b221b 0%, #141914 100%);
 }
 
 .checkbox-row {

@@ -139,6 +139,15 @@ function StatusScreen({ title, text }) {
   )
 }
 
+function AppFooter() {
+  return (
+    <div className="app-footer" aria-label="build info">
+      <span>version 1.1</span>
+      <span>developer איליה גולדפרב</span>
+    </div>
+  )
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -794,6 +803,8 @@ export default function App() {
               </button>
             </div>
           ) : null}
+
+          <AppFooter />
         </section>
       )}
 
