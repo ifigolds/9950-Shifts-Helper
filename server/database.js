@@ -9,7 +9,7 @@ const schemaPath = path.join(__dirname, 'db', 'schema.sql');
 const backupDir = process.env.DB_BACKUP_DIR || path.join(dbDir, 'backups');
 const maxBackupFiles = Number(process.env.DB_BACKUP_LIMIT || 14);
 const backupThrottleMs = Number(process.env.DB_BACKUP_THROTTLE_MS || 5 * 60 * 1000);
-const allowEphemeralDb = String(process.env.ALLOW_EPHEMERAL_DB || '').toLowerCase() === 'true';
+const requirePersistentDb = String(process.env.REQUIRE_PERSISTENT_DB || '').toLowerCase() === 'true';
 
 let lastBackupAt = 0;
 let pendingBackupTimer = null;
@@ -19,24 +19,38 @@ function isPersistentStoragePath(targetPath) {
   return normalizedPath.startsWith('/var/data/');
 }
 
-function assertDurableStorageOrThrow() {
-  if (!process.env.RENDER || allowEphemeralDb) {
-    return;
-  }
-
+function getStorageDiagnostics() {
   const dbIsPersistent = isPersistentStoragePath(dbPath);
   const backupIsPersistent = isPersistentStoragePath(backupDir);
+  return {
+    dbIsPersistent,
+    backupIsPersistent,
+    fullyPersistent: dbIsPersistent && backupIsPersistent,
+  };
+}
 
-  if (dbIsPersistent && backupIsPersistent) {
+function assertDurableStorageOrThrow() {
+  if (!process.env.RENDER) {
     return;
   }
 
-  throw new Error(
+  const diagnostics = getStorageDiagnostics();
+
+  if (diagnostics.fullyPersistent) {
+    return;
+  }
+
+  const message =
     'Render persistent storage is not configured for SQLite. ' +
-    'Set DB_STORAGE_DIR and DB_BACKUP_DIR to a persistent disk path under /var/data before deploying. ' +
-    'Override only intentionally with ALLOW_EPHEMERAL_DB=true. ' +
-    'Docs: https://render.com/docs/disks'
-  );
+    'Set DB_STORAGE_DIR and DB_BACKUP_DIR to a persistent disk path under /var/data. ' +
+    'By default, Render services use an ephemeral filesystem, so local SQLite data can be lost on restart or redeploy. ' +
+    'Docs: https://render.com/docs/disks';
+
+  if (requirePersistentDb) {
+    throw new Error(message);
+  }
+
+  console.warn(message);
 }
 
 assertDurableStorageOrThrow();
@@ -130,13 +144,20 @@ function scheduleDbBackup(reason = 'write') {
 }
 
 function logStorageStatus() {
+  const diagnostics = getStorageDiagnostics();
   const storageMode = process.env.RENDER
-    ? (allowEphemeralDb ? 'ephemeral override enabled' : 'persistent disk required')
+    ? (diagnostics.fullyPersistent ? 'render persistent disk' : 'render ephemeral filesystem')
     : 'local development';
 
   console.log(`Database initialized at ${dbPath}`);
   console.log(`Database backups directory: ${backupDir}`);
   console.log(`Database storage mode: ${storageMode}`);
+  if (process.env.RENDER && !diagnostics.fullyPersistent) {
+    console.warn(
+      'WARNING: SQLite is running on Render without a persistent disk. ' +
+      'This keeps the service online, but database files can still be lost on restart or redeploy.'
+    );
+  }
 }
 
 const db = new sqlite3.Database(dbPath);
