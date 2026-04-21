@@ -2,8 +2,27 @@ const TelegramBot = require('node-telegram-bot-api');
 const { run, get, all } = require('./dbUtils');
 const { startShiftReminders } = require('./shiftReminders');
 const { BOT_TEXT, getHelpText } = require('./i18n/he');
+const { getMiniAppUrl, getTemplateUrl } = require('./appUrls');
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(process.env.BOT_TOKEN || 'disabled-token', {
+  polling: {
+    autoStart: false,
+    params: {
+      timeout: 30,
+    },
+  },
+});
+
+const botRuntime = {
+  enabled: Boolean(process.env.BOT_TOKEN),
+  started: false,
+  polling: false,
+  bootstrapDone: false,
+  remindersStarted: false,
+  lastStartedAt: null,
+  lastErrorAt: null,
+  lastErrorMessage: '',
+};
 
 const sessions = {};
 
@@ -29,10 +48,74 @@ function buildThanksUrl() {
   return `https://t.me/${BOT_TEXT.thanksUsername}?text=${encodeURIComponent(BOT_TEXT.thanksMessage)}`;
 }
 
-function buildTemplateUrl() {
-  const baseUrl = String(process.env.BASE_URL || 'https://9950-shifts-helper.vercel.app').replace(/\/+$/, '');
-  return `${baseUrl}/shift-import-template.xlsx`;
+function rememberBotError(error) {
+  botRuntime.lastErrorAt = new Date().toISOString();
+  botRuntime.lastErrorMessage = String(error?.message || error || 'Unknown Telegram bot error');
+  console.error('Telegram bot error:', botRuntime.lastErrorMessage);
 }
+
+async function startBotService() {
+  if (!process.env.BOT_TOKEN) {
+    botRuntime.enabled = false;
+    console.warn('BOT_TOKEN is not configured. Telegram bot startup skipped.');
+    return null;
+  }
+
+  if (typeof bot.isPolling === 'function' && bot.isPolling()) {
+    botRuntime.enabled = true;
+    botRuntime.started = true;
+    botRuntime.polling = true;
+    return bot;
+  }
+
+  try {
+    await bot.startPolling({ restart: true });
+    botRuntime.enabled = true;
+    botRuntime.started = true;
+    botRuntime.polling = typeof bot.isPolling === 'function' ? bot.isPolling() : true;
+    botRuntime.lastStartedAt = new Date().toISOString();
+    botRuntime.lastErrorAt = null;
+    botRuntime.lastErrorMessage = '';
+
+    if (!botRuntime.bootstrapDone) {
+      await bootstrapAdmins();
+      botRuntime.bootstrapDone = true;
+    }
+
+    if (!botRuntime.remindersStarted) {
+      startShiftReminders(bot);
+      botRuntime.remindersStarted = true;
+    }
+
+    return bot;
+  } catch (error) {
+    botRuntime.started = false;
+    botRuntime.polling = false;
+    rememberBotError(error);
+    return null;
+  }
+}
+
+function getBotHealth() {
+  return {
+    ...botRuntime,
+    mini_app_url: getMiniAppUrl(),
+    template_url: getTemplateUrl(),
+  };
+}
+
+bot.on('polling_error', (error) => {
+  botRuntime.polling = false;
+  rememberBotError(error);
+});
+
+bot.on('webhook_error', (error) => {
+  rememberBotError(error);
+});
+
+bot.on('error', (error) => {
+  rememberBotError(error);
+});
 
 function getBootstrapAdminIds() {
   return String(process.env.ADMIN_TELEGRAM_IDS || '')
@@ -284,7 +367,7 @@ bot.onText(/\/template/, async (msg) => {
             [
               {
                 text: BOT_TEXT.importTemplate.button,
-                url: buildTemplateUrl(),
+                url: getTemplateUrl(),
               },
             ],
           ],
@@ -443,7 +526,7 @@ bot.on('message', async (msg) => {
               [
                 {
                   text: BOT_TEXT.menu.openAppButton,
-                  web_app: { url: process.env.BASE_URL }
+                  web_app: { url: getMiniAppUrl() }
                 }
               ]
             ]
@@ -653,7 +736,7 @@ bot.on('callback_query', async (query) => {
               [
                 {
                   text: BOT_TEXT.menu.openAppButton,
-                  web_app: { url: process.env.BASE_URL }
+                  web_app: { url: getMiniAppUrl() }
                 }
               ]
             ]
@@ -777,10 +860,8 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// bootstrap at startup
-bootstrapAdmins().catch((err) => {
-  console.error('Initial bootstrapAdmins error:', err.message);
-});
-startShiftReminders(bot);
-
-module.exports = { bot };
+module.exports = {
+  bot,
+  startBotService,
+  getBotHealth,
+};

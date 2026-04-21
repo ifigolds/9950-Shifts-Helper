@@ -1,3 +1,5 @@
+const { getMiniAppUrl } = require('./appUrls');
+
 function buildOpenAppKeyboard() {
   return {
     reply_markup: {
@@ -5,7 +7,7 @@ function buildOpenAppKeyboard() {
         [
           {
             text: '📲 פתיחת המערכת',
-            web_app: { url: process.env.BASE_URL }
+            web_app: { url: getMiniAppUrl() }
           }
         ]
       ]
@@ -27,7 +29,7 @@ function buildShiftResponseKeyboard(shiftId) {
         [
           {
             text: 'פתיחת האפליקציה',
-            web_app: { url: process.env.BASE_URL }
+            web_app: { url: getMiniAppUrl() }
           }
         ]
       ]

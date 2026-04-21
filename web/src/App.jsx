@@ -1,12 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-const API_BASE = 'https://nine950-backend.onrender.com'
+const FALLBACK_API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-9950.png'
 const MIN_BOOT_MS = 1400
 const ISRAEL_TIMEZONE = 'Asia/Jerusalem'
 const WEEKDAYS = ['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳']
 const BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'local build'
 const IMPORT_TEMPLATE_URL = '/shift-import-template.xlsx'
+const RETRYABLE_NETWORK_MESSAGES = new Set(['failed to fetch', 'load failed', 'networkerror when attempting to fetch resource'])
+
+function resolveApiBase() {
+  if (typeof window !== 'undefined') {
+    const currentHost = window.location.hostname
+
+    if (
+      currentHost === 'localhost' ||
+      currentHost === '127.0.0.1' ||
+      currentHost.endsWith('.onrender.com')
+    ) {
+      return window.location.origin
+    }
+  }
+
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE) {
+    return import.meta.env.VITE_API_BASE
+  }
+
+  return FALLBACK_API_BASE
+}
+
+const API_BASE = resolveApiBase()
 
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
@@ -293,13 +316,18 @@ function BrandLockup({ compact = false }) {
   )
 }
 
-function StatusScreen({ title, text }) {
+function StatusScreen({ title, text, actionLabel, onAction }) {
   return (
     <div className="boot-screen">
       <div className="surface surface-centered status-card">
         <BrandLockup compact />
         <h2 className="page-title">{title}</h2>
         {text ? <p className="subtitle wide-copy">{text}</p> : null}
+        {actionLabel && onAction ? (
+          <div className="actions centered-actions">
+            <button onClick={onAction}>{actionLabel}</button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -349,6 +377,37 @@ export default function App() {
   const todayKey = getCurrentIsraelDateKey(referenceNow, timezoneLabel)
   const currentClock = getCurrentIsraelTimeLabel(referenceNow, timezoneLabel)
   const todayLabel = formatHumanDate(todayKey)
+
+  function isRetryableNetworkError(error) {
+    const message = String(error?.message || '').trim().toLowerCase()
+    return RETRYABLE_NETWORK_MESSAGES.has(message)
+  }
+
+  function mapApiError(error) {
+    if (isRetryableNetworkError(error)) {
+      return 'לא הצלחנו להתחבר לשרת. אפשר לנסות שוב בעוד רגע.'
+    }
+
+    return error?.message || 'שגיאה לא צפויה'
+  }
+
+  async function performFetch(url, options) {
+    const response = await fetch(url, options)
+    const text = await response.text()
+    let data
+
+    try {
+      data = JSON.parse(text)
+    } catch {
+      throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`)
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`)
+    }
+
+    return data
+  }
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -412,7 +471,7 @@ export default function App() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err.message || 'שגיאה בטעינת הפרופיל')
+          setError(mapApiError(err))
         }
       } finally {
         const elapsed = Date.now() - bootStartedAt
@@ -460,30 +519,30 @@ export default function App() {
   async function api(path, options = {}) {
     const tg = window.Telegram?.WebApp
     const initData = tg?.initData || 'debug_user=1933391248'
-
-    const response = await fetch(API_BASE + path, {
+    const requestOptions = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         ...(options.headers || {}),
         'x-telegram-init-data': initData,
       },
-    })
-
-    const text = await response.text()
-    let data
-
-    try {
-      data = JSON.parse(text)
-    } catch {
-      throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`)
     }
 
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}`)
+    const maxAttempts = options.method && options.method !== 'GET' ? 1 : 3
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await performFetch(API_BASE + path, requestOptions)
+      } catch (error) {
+        if (!isRetryableNetworkError(error) || attempt === maxAttempts) {
+          throw error
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, attempt * 900))
+      }
     }
 
-    return data
+    throw new Error('Request failed')
   }
 
   function syncServerNow(nowIso) {
@@ -1527,7 +1586,7 @@ export default function App() {
   }
 
   if (error && !profile) {
-    return <StatusScreen title="שגיאה" text={error} />
+    return <StatusScreen title="שגיאה" text={error} actionLabel="נסה שוב" onAction={() => window.location.reload()} />
   }
 
   if (!profile?.registered) {
