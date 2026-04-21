@@ -6,6 +6,7 @@ const { run: runAsync, get: getAsync, all: allAsync, withTransaction } = require
 const { bot } = require('../bot');
 const { getShiftBounds } = require('../shiftTiming');
 const { buildImportPreview, validateShiftPayload } = require('../shiftImport');
+const { restoreKnownUsers } = require('../userRestore');
 const {
   ISRAEL_TIMEZONE,
   getIsraelDateKey,
@@ -801,6 +802,21 @@ router.post('/shifts/:id/assign', authMiddleware, adminMiddleware, async (req, r
     });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.post('/restore-known-users', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await restoreKnownUsers();
+
+    return res.json({
+      success: true,
+      restored_count: result.restored_count,
+      totals: result.totals,
+      users: result.users,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 
