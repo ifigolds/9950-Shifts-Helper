@@ -623,7 +623,13 @@ export default function App() {
     try {
       setError('')
       setOverlay(null)
-      await Promise.all([loadUserShifts(), loadLeaderboard()])
+      await loadUserShifts()
+      try {
+        await loadLeaderboard()
+      } catch {
+        setLeaderboard([])
+        setCurrentLeaderboardUser(null)
+      }
       setMode('user')
     } catch (err) {
       setError(err.message || 'שגיאה בטעינת אזור אישי')
@@ -670,7 +676,13 @@ export default function App() {
 
       setNoReason('')
       setOverlay(null)
-      await Promise.all([loadUserShifts(), loadLeaderboard()])
+      await loadUserShifts()
+      try {
+        await loadLeaderboard()
+      } catch {
+        setLeaderboard([])
+        setCurrentLeaderboardUser(null)
+      }
     } catch (err) {
       setError(err.message || 'שגיאה בעדכון התגובה למשמרת')
     }
@@ -1156,6 +1168,50 @@ export default function App() {
     )
   }
 
+  function renderLeaderboardSection() {
+    return (
+      <section className="surface leaderboard-surface">
+        <div className="section-head">
+          <div>
+            <div className="eyebrow">דירוג עולמי</div>
+            <div className="section-title">טופ שעות של כל האנשים במערכת</div>
+          </div>
+          <span className="meta-pill">{leaderboard.length} משתתפים</span>
+        </div>
+
+        {currentLeaderboardUser ? (
+          <div className="leaderboard-hero">
+            <div>
+              <div className="label">המיקום שלך</div>
+              <div className="leaderboard-self-rank">#{currentLeaderboardUser.rank}</div>
+            </div>
+            <div className="leaderboard-self-copy">
+              <div className="list-main">{personName(currentLeaderboardUser)}</div>
+              <div className="list-sub">
+                {formatHoursLabel(currentLeaderboardUser.completed_hours)} שעות · {currentLeaderboardUser.completed_shifts} משמרות
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {leaderboard.length ? (
+          <div className="leaderboard-list">
+            {leaderboard.slice(0, 3).map((entry) => renderLeaderboardRow(entry))}
+            {leaderboard.length > 3 ? (
+              <div className="leaderboard-divider">המשך הדירוג</div>
+            ) : null}
+            {leaderboard.slice(3).map((entry) => renderLeaderboardRow(entry, entry.is_current_user))}
+          </div>
+        ) : (
+          <div className="empty-state panel-empty">
+            <div className="section-title">עדיין אין דירוג</div>
+            <p className="subtitle">הדירוג יתמלא אוטומטית אחרי שיושלמו משמרות במערכת.</p>
+          </div>
+        )}
+      </section>
+    )
+  }
+
   if (loading) {
     return <LoadingScreen />
   }
@@ -1382,6 +1438,8 @@ export default function App() {
             </aside>
           </section>
 
+          {renderLeaderboardSection()}
+
           <section className="surface timeline-surface">
             <div className="section-head">
               <div>
@@ -1399,46 +1457,6 @@ export default function App() {
               <div className="empty-state panel-empty">
                 <div className="section-title">עדיין אין היסטוריית משמרות</div>
                 <p className="subtitle">ברגע שתשובץ למשמרת, היא תופיע כאן יחד עם הסטטוס והזמנים שלה.</p>
-              </div>
-            )}
-          </section>
-
-          <section className="surface leaderboard-surface">
-            <div className="section-head">
-              <div>
-                <div className="eyebrow">דירוג עולמי</div>
-                <div className="section-title">טופ שעות של כל האנשים במערכת</div>
-              </div>
-              <span className="meta-pill">{leaderboard.length} משתתפים</span>
-            </div>
-
-            {currentLeaderboardUser ? (
-              <div className="leaderboard-hero">
-                <div>
-                  <div className="label">המיקום שלך</div>
-                  <div className="leaderboard-self-rank">#{currentLeaderboardUser.rank}</div>
-                </div>
-                <div className="leaderboard-self-copy">
-                  <div className="list-main">{personName(currentLeaderboardUser)}</div>
-                  <div className="list-sub">
-                    {formatHoursLabel(currentLeaderboardUser.completed_hours)} שעות · {currentLeaderboardUser.completed_shifts} משמרות
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {leaderboard.length ? (
-              <div className="leaderboard-list">
-                {leaderboard.slice(0, 3).map((entry) => renderLeaderboardRow(entry))}
-                {leaderboard.length > 3 ? (
-                  <div className="leaderboard-divider">המשך הדירוג</div>
-                ) : null}
-                {leaderboard.slice(3).map((entry) => renderLeaderboardRow(entry, entry.is_current_user))}
-              </div>
-            ) : (
-              <div className="empty-state panel-empty">
-                <div className="section-title">עדיין אין דירוג</div>
-                <p className="subtitle">הדירוג יתמלא אוטומטית אחרי שיושלמו משמרות במערכת.</p>
               </div>
             )}
           </section>
