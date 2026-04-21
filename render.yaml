@@ -1,0 +1,26 @@
+services:
+  - type: web
+    runtime: node
+    name: 9950-shifts-helper-backend
+    plan: starter
+    buildCommand: npm install --build-from-source
+    startCommand: npm start
+    disk:
+      name: sqlite-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DB_STORAGE_DIR
+        value: /var/data/sqlite
+      - key: DB_BACKUP_DIR
+        value: /var/data/sqlite-backups
+      - key: REQUIRE_PERSISTENT_DB
+        value: "true"
+      - key: DB_BACKUP_LIMIT
+        value: "14"
+      - key: DB_BACKUP_THROTTLE_MS
+        value: "300000"
+      - key: BOT_TOKEN
+        sync: false
+      - key: BASE_URL
+        sync: false

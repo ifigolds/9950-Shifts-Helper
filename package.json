@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server/app.js",
     "dev": "nodemon server/app.js",
-    "postinstall": "npm rebuild sqlite3 --build-from-source"
+    "postinstall": "npm rebuild sqlite3 --build-from-source",
+    "restore:known-users": "node tools/restore-approved-users.mjs"
   },
   "keywords": [],
   "author": "",
