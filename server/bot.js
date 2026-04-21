@@ -1,13 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { run, get, all } = require('./dbUtils');
 const { startShiftReminders } = require('./shiftReminders');
+const { BOT_TEXT, getHelpText } = require('./i18n/he');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 const sessions = {};
-
-const THANKS_USERNAME = 'igoldfarb';
-const THANKS_MESSAGE = 'Привет! Спасибо тебе за бота 9950. Он реально помогает с дежурствами и сильно упрощает работу.';
 
 const SERVICE_OPTIONS = ['חובה', 'מילואים', 'קבע', 'אחר'];
 const RANK_OPTIONS = [
@@ -27,77 +25,8 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getHelpText() {
-  return [
-    '9950 HELP CENTER',
-    '',
-    'Это центральная справка по боту 9950.',
-    'Здесь собрана вся логика работы бота, mini app и админских функций в одном сообщении.',
-    '',
-    'ОСНОВНЫЕ КОМАНДЫ',
-    '/start - запуск бота, приветствие и главное меню.',
-    '/help - полная инструкция по всем возможностям.',
-    '/thanks - готовое сообщение благодарности для @igoldfarb.',
-    '/addadmin TELEGRAM_ID - назначить администратора.',
-    '/removeadmin TELEGRAM_ID - снять администратора.',
-    '',
-    'ДЛЯ ОБЫЧНОГО ПОЛЬЗОВАТЕЛЯ',
-    '1. Нажми "Регистрация в систему".',
-    '2. По шагам отправь имя, фамилию, телефон, звание и тип службы.',
-    '3. После этого заявка уходит администраторам на подтверждение.',
-    '4. После одобрения ты сможешь открыть систему и работать со своими сменами.',
-    '',
-    'ЧТО ТЫ ВИДИШЬ В MINI APP',
-    'В личном кабинете показываются все назначенные тебе смены.',
-    'Для каждой смены доступны дата, время, заметки, текущий статус ответа и при необходимости блок замены.',
-    'Также в профиле отображается статистика по завершённым сменам и отработанным часам.',
-    '',
-    'КАК ОТВЕЧАТЬ НА СМЕНУ',
-    'По каждой смене можно выбрать один из трёх ответов: приду, не уверен, не приду.',
-    'Если выбрать "не приду", бот попросит отдельно написать причину.',
-    'После того как ответ уже введён, система хранит его и позволяет позже изменить.',
-    '',
-    'БЫСТРЫЕ ОТВЕТЫ ПРЯМО В TELEGRAM',
-    'Когда тебя назначают на смену или обновляют существующую смену, бот может прислать сообщение с кнопками быстрого ответа.',
-    '"Приду" сразу подтверждает участие.',
-    '"Не уверен" переводит смену в статус сомнения.',
-    '"Не приду" открывает сценарий ввода причины.',
-    '',
-    'НАПОМИНАНИЯ И ПЕРЕДАЧА СМЕНЫ',
-    'За 15 минут до начала смены бот присылает напоминание тому, кто должен заступить.',
-    'За 15 минут до конца текущей смены бот присылает дежурному данные о том, кто будет его заменять.',
-    'Если у следующего человека есть телефон или username, это позволяет быстро связаться с ним напрямую.',
-    '',
-    'ДЛЯ АДМИНИСТРАТОРА',
-    'Администратор получает доступ к отдельному режиму mini app с календарём.',
-    'Нажатие на день открывает управление этим днём: создание смен, просмотр смен, редактирование, удаление и назначение людей.',
-    'Список кандидатов на смену сортируется с приоритетом на тех, кто давно не дежурил.',
-    'Те, кто только что был на смене, считаются менее приоритетными.',
-    'Пересекающиеся назначения блокируются автоматически.',
-    '',
-    'ОДОБРЕНИЕ РЕГИСТРАЦИИ',
-    'Когда новый человек отправляет анкету, все администраторы получают сообщение с его данными.',
-    'В сообщении есть кнопки одобрения и отклонения.',
-    'После одобрения человек получает уведомление и может зайти в систему.',
-    '',
-    'ЧТО ЕЩЁ ДЕЛАЕТ БОТ',
-    'Бот обновляет username пользователя из Telegram при новых сообщениях.',
-    'Если заявка уже отправлена и ожидает проверки, повторная регистрация не запускается.',
-    'Если бот уже ждёт причину отсутствия по смене, следующее сообщение пользователя сохраняется именно как причина.',
-    '',
-    'ЕСЛИ ЧТО-ТО НЕ РАБОТАЕТ',
-    '1. Отправь /start заново.',
-    '2. Убедись, что тебя уже одобрил администратор.',
-    '3. Попробуй открыть систему кнопкой из самого бота.',
-    '4. Если проблема остаётся, сообщи администратору, какая именно команда или смена не сработала.',
-    '',
-    'КРАТКО',
-    'Бот 9950 нужен для регистрации, управления сменами, ответов по дежурствам, напоминаний и удобной работы администраторов через календарь.'
-  ].join('\n');
-}
-
 function buildThanksUrl() {
-  return `https://t.me/${THANKS_USERNAME}?text=${encodeURIComponent(THANKS_MESSAGE)}`;
+  return `https://t.me/${BOT_TEXT.thanksUsername}?text=${encodeURIComponent(BOT_TEXT.thanksMessage)}`;
 }
 
 function getBootstrapAdminIds() {
@@ -161,16 +90,16 @@ async function updateUsernameFromMessage(msg) {
 
 async function sendMainMenu(chatId, isApproved = false) {
   const keyboard = [
-    ['📲 פתיחת המערכת']
+    [BOT_TEXT.menu.openAppButton]
   ];
 
   if (!isApproved) {
-    keyboard.unshift(['📋 הרשמה למערכת']);
+    keyboard.unshift([BOT_TEXT.menu.registerButton]);
   }
 
   await bot.sendMessage(
     chatId,
-    'בחר מה תרצה לעשות:',
+    BOT_TEXT.menu.chooseAction,
     {
       reply_markup: {
         keyboard,
@@ -309,13 +238,13 @@ bot.onText(/\/thanks/, async (msg) => {
   try {
     await bot.sendMessage(
       chatId,
-      'Нажми кнопку ниже, чтобы открыть готовое сообщение благодарности для @igoldfarb.',
+      BOT_TEXT.thanks.prompt,
       {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: 'Отправить благодарность',
+                text: BOT_TEXT.thanks.button,
                 url: buildThanksUrl()
               }
             ]
@@ -324,7 +253,7 @@ bot.onText(/\/thanks/, async (msg) => {
       }
     );
 
-    await bot.sendMessage(chatId, `Текст сообщения:\n${THANKS_MESSAGE}`);
+    await bot.sendMessage(chatId, `${BOT_TEXT.thanks.previewLabel}\n${BOT_TEXT.thanksMessage}`);
   } catch (err) {
     console.error('/thanks error:', err);
   }
@@ -431,7 +360,7 @@ bot.on('message', async (msg) => {
     await bootstrapAdmins();
     await updateUsernameFromMessage(msg);
 
-    // команды /start /addadmin /removeadmin уже обработаны отдельно
+    // Core slash commands are handled in dedicated listeners above.
     if (text.startsWith('/')) return;
 
     // pending reason for shift "no"
@@ -467,16 +396,16 @@ bot.on('message', async (msg) => {
     }
 
     // open mini app
-    if (text === '📲 פתיחת המערכת') {
+    if (text === BOT_TEXT.menu.openAppButton) {
       await bot.sendMessage(
         chatId,
-        '👇 לחץ לפתיחת המערכת',
+        'לחץ על הכפתור כדי לפתוח את המערכת.',
         {
           reply_markup: {
             inline_keyboard: [
               [
                 {
-                  text: '📲 פתיחת המערכת',
+                  text: BOT_TEXT.menu.openAppButton,
                   web_app: { url: process.env.BASE_URL }
                 }
               ]
@@ -488,7 +417,7 @@ bot.on('message', async (msg) => {
     }
 
     // start registration
-    if (text === '📋 הרשמה למערכת') {
+    if (text === BOT_TEXT.menu.registerButton) {
       const existingUser = await ensureUserNotRegisterTwice(telegramId);
 
       if (existingUser?.role === 'admin') {
@@ -686,7 +615,7 @@ bot.on('callback_query', async (query) => {
             inline_keyboard: [
               [
                 {
-                  text: '📲 פתיחת המערכת',
+                  text: BOT_TEXT.menu.openAppButton,
                   web_app: { url: process.env.BASE_URL }
                 }
               ]
@@ -727,7 +656,7 @@ bot.on('callback_query', async (query) => {
 
       await bot.sendMessage(
         user.telegram_id,
-        '❌ ההרשמה שלך נדחתה.\nאפשר ללחוץ שוב על "הרשמה למערכת" ולשלוח פרטים מחדש.'
+        `❌ ההרשמה שלך נדחתה.\nאפשר ללחוץ שוב על "${BOT_TEXT.menu.registerButton}" ולשלוח פרטים מחדש.`
       ).catch(() => {});
 
       return;

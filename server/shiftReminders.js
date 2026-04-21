@@ -14,11 +14,15 @@ function formatPersonLine(person) {
   return `• ${displayName}${phoneLine}${usernameLine}`;
 }
 
+function formatShiftWindow(shift) {
+  return `${shift.shift_date} | ${shift.start_time} - ${shift.end_time} (שעון ישראל)`;
+}
+
 function buildShiftReminderText(shift) {
   return (
     `תזכורת: המשמרת שלך מתחילה בעוד כ-15 דקות.\n\n` +
     `${shift.title}\n` +
-    `${shift.shift_date} | ${shift.start_time} - ${shift.end_time}\n\n` +
+    `${formatShiftWindow(shift)}\n\n` +
     `מומלץ להתארגן ולהיות זמין עכשיו.`
   );
 }
@@ -30,7 +34,7 @@ function buildHandoverText(currentShift, nextShift, nextPeople) {
     `המשמרת שלך מסתיימת בעוד כ-15 דקות.\n\n` +
     `משמרת נוכחית: ${currentShift.title}\n` +
     `מחליף/ים: ${nextShift.title}\n` +
-    `${nextShift.shift_date} | ${nextShift.start_time} - ${nextShift.end_time}\n\n` +
+    `${formatShiftWindow(nextShift)}\n\n` +
     `${peopleBlock}`
   );
 }

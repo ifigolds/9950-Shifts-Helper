@@ -39,6 +39,10 @@ function formatShiftNotes(notes) {
   return notes ? `הערות: ${notes}\n` : '';
 }
 
+function formatShiftWindow(shift) {
+  return `${shift.shift_date} | ${shift.start_time} - ${shift.end_time} (שעון ישראל)`;
+}
+
 function buildShiftChanges(oldShift, nextShift) {
   const changes = [];
 
@@ -71,8 +75,7 @@ function buildAssignedShiftNotification(shift) {
     text:
       `שובצת למשמרת חדשה ✅\n\n` +
       `שם המשמרת: ${shift.title}\n` +
-      `תאריך: ${shift.shift_date}\n` +
-      `שעה: ${shift.start_time} - ${shift.end_time}\n` +
+      `מועד: ${formatShiftWindow(shift)}\n` +
       `${formatShiftNotes(shift.notes)}\n` +
       `נא לאשר האם תגיע למשמרת או לפתוח את האפליקציה.`,
     options: buildShiftResponseKeyboard(shift.id)
@@ -86,8 +89,7 @@ function buildUpdatedShiftNotification(oldShift, nextShift) {
     text:
       `✏️ המשמרת שלך עודכנה\n\n` +
       `שם המשמרת: ${nextShift.title}\n` +
-      `תאריך: ${nextShift.shift_date}\n` +
-      `שעה: ${nextShift.start_time} - ${nextShift.end_time}\n` +
+      `מועד: ${formatShiftWindow(nextShift)}\n` +
       `${formatShiftNotes(nextShift.notes)}\n` +
       `${changes.length ? `שינויים:\n• ${changes.join('\n• ')}\n\n` : ''}` +
       `נא להיכנס לאפליקציה ולבדוק את הפרטים המעודכנים.`,
@@ -100,8 +102,7 @@ function buildDeletedShiftNotification(shift) {
     text:
       `המשמרת שלך בוטלה ❌\n\n` +
       `שם המשמרת: ${shift.title}\n` +
-      `תאריך: ${shift.shift_date}\n` +
-      `שעה: ${shift.start_time} - ${shift.end_time}\n` +
+      `מועד: ${formatShiftWindow(shift)}\n` +
       `${formatShiftNotes(shift.notes)}`
   };
 }

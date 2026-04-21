@@ -1,6 +1,7 @@
+const { ISRAEL_TIMEZONE, parseIsraelDateTime } = require('./timezone');
+
 function parseShiftDateTime(shiftDate, time) {
-  const normalizedTime = String(time || '').length === 5 ? `${time}:00` : String(time || '')
-  return new Date(`${shiftDate}T${normalizedTime}`)
+  return parseIsraelDateTime(shiftDate, time);
 }
 
 function getShiftBounds(shift) {
@@ -19,6 +20,11 @@ function getShiftDurationHours(shift) {
   return Number(((end - start) / (1000 * 60 * 60)).toFixed(2))
 }
 
+function getShiftDurationMs(shift) {
+  const { start, end } = getShiftBounds(shift)
+  return end.getTime() - start.getTime()
+}
+
 function isShiftActive(shift, now = new Date()) {
   const { start, end } = getShiftBounds(shift)
   return now >= start && now < end
@@ -29,9 +35,35 @@ function isShiftCompleted(shift, now = new Date()) {
   return now >= end
 }
 
+function getShiftTimingSnapshot(shift, now = new Date()) {
+  const { start, end } = getShiftBounds(shift)
+  const durationMs = Math.max(1, end.getTime() - start.getTime())
+  const nowMs = now.getTime()
+  const elapsedMs = Math.min(Math.max(nowMs - start.getTime(), 0), durationMs)
+  const remainingMs = Math.max(end.getTime() - nowMs, 0)
+  const progressPercent = Number(((elapsedMs / durationMs) * 100).toFixed(1))
+
+  return {
+    timezone: ISRAEL_TIMEZONE,
+    now_iso: now.toISOString(),
+    start_iso: start.toISOString(),
+    end_iso: end.toISOString(),
+    duration_ms: durationMs,
+    duration_minutes: Math.round(durationMs / (1000 * 60)),
+    duration_hours: Number((durationMs / (1000 * 60 * 60)).toFixed(2)),
+    elapsed_ms: elapsedMs,
+    elapsed_minutes: Math.round(elapsedMs / (1000 * 60)),
+    remaining_ms: remainingMs,
+    remaining_minutes: Math.round(remainingMs / (1000 * 60)),
+    progress_percent: progressPercent,
+  }
+}
+
 module.exports = {
   getShiftBounds,
+  getShiftDurationMs,
   getShiftDurationHours,
+  getShiftTimingSnapshot,
   isShiftActive,
   isShiftCompleted,
   parseShiftDateTime,

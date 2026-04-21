@@ -2,7 +2,18 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth');
 const { all, get, run } = require('../dbUtils');
-const { getShiftBounds, getShiftDurationHours, isShiftActive, isShiftCompleted } = require('../shiftTiming');
+const {
+  getShiftBounds,
+  getShiftDurationHours,
+  getShiftTimingSnapshot,
+  isShiftActive,
+  isShiftCompleted,
+} = require('../shiftTiming');
+const {
+  ISRAEL_TIMEZONE,
+  getIsraelDateKey,
+  getIsraelDateTimeLabel,
+} = require('../timezone');
 
 async function getUserStats(userId) {
   const completedYesShifts = await all(
@@ -130,6 +141,7 @@ async function getEnrichedUserShifts(userId) {
       duration_hours: getShiftDurationHours(shift),
       is_active: isShiftActive(shift, now),
       is_completed: isShiftCompleted(shift, now),
+      timing: getShiftTimingSnapshot(shift, now),
       next_shift: nextShift
         ? {
             id: nextShift.id,
@@ -158,6 +170,11 @@ router.get('/profile', authMiddleware, async (req, res) => {
       registered: true,
       user: req.dbUser,
       stats,
+      timezone: ISRAEL_TIMEZONE,
+      now: {
+        date_key: getIsraelDateKey(),
+        label: getIsraelDateTimeLabel(),
+      },
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -176,7 +193,14 @@ router.get('/shifts', authMiddleware, async (req, res) => {
 
     const shifts = await getEnrichedUserShifts(req.dbUser.id);
 
-    return res.json({ shifts });
+    return res.json({
+      shifts,
+      timezone: ISRAEL_TIMEZONE,
+      now: {
+        date_key: getIsraelDateKey(),
+        label: getIsraelDateTimeLabel(),
+      },
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -196,7 +220,17 @@ router.get('/next-shift', authMiddleware, async (req, res) => {
     const now = new Date();
     const nextShift = shifts.find((shift) => getShiftBounds(shift).end > now) || shifts[0] || null;
 
-    return res.json({ shift: nextShift });
+    const activeShift = shifts.find((shift) => shift.is_active) || null;
+
+    return res.json({
+      shift: nextShift,
+      active_shift: activeShift,
+      timezone: ISRAEL_TIMEZONE,
+      now: {
+        date_key: getIsraelDateKey(),
+        label: getIsraelDateTimeLabel(),
+      },
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

@@ -22,20 +22,20 @@ function attachTelegramUser(req, res, next, telegramUser) {
 function authMiddleware(req, res, next) {
   const initData = req.headers['x-telegram-init-data'];
 
-  // DEBUG режим для браузера / Vercel без Telegram
+  // Debug mode for browser-based checks outside Telegram.
   if (initData && initData.startsWith('debug_user=')) {
     const telegramId = initData.replace('debug_user=', '');
     return attachTelegramUser(req, res, next, { id: telegramId });
   }
 
   if (!initData) {
-    return res.status(401).json({ error: 'Нет данных авторизации Telegram' });
+    return res.status(401).json({ error: 'חסרים נתוני הזדהות של Telegram' });
   }
 
   const result = validateTelegramInitData(initData, process.env.BOT_TOKEN);
 
   if (!result || !result.user) {
-    return res.status(401).json({ error: 'Неверная авторизация Telegram' });
+    return res.status(401).json({ error: 'אימות Telegram נכשל' });
   }
 
   return attachTelegramUser(req, res, next, result.user);

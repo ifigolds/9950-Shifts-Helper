@@ -1,11 +1,19 @@
 const content = document.getElementById('content');
 const overlayRoot = document.getElementById('overlay-root');
+const noticeRoot = document.getElementById('notice-root');
+
+const ISRAEL_TIMEZONE = 'Asia/Jerusalem';
+const WEEKDAY_LABELS = ['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳'];
 
 let adminShiftsCache = [];
 let pendingNoShiftId = null;
-let adminCalendarDate = new Date();
+let adminCalendarDate = getCurrentIsraelCalendarMonth();
 let selectedAdminDate = null;
 let adminOverlayState = null;
+let noticeTimer = null;
+let userDashboardState = null;
+let userTicker = null;
+let activeScreen = 'loading';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -42,6 +50,67 @@ async function api(path, options = {}) {
   return data;
 }
 
+function getIsraelDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ISRAEL_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+
+  const values = {};
+  formatter.formatToParts(date).forEach((part) => {
+    if (part.type !== 'literal') {
+      values[part.type] = part.value;
+    }
+  });
+
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+    second: Number(values.second)
+  };
+}
+
+function getCurrentIsraelDateKey() {
+  const parts = getIsraelDateParts();
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function getCurrentIsraelCalendarMonth() {
+  const parts = getIsraelDateParts();
+  return new Date(parts.year, parts.month - 1, 1);
+}
+
+function getCurrentIsraelTimeLabel() {
+  const parts = getIsraelDateParts();
+  return `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+}
+
+function showNotice(message, tone = 'info') {
+  if (!noticeRoot) return;
+
+  noticeRoot.innerHTML = `
+    <div class="notice notice-${escapeHtml(tone)}">
+      <span>${escapeHtml(message)}</span>
+    </div>
+  `;
+
+  noticeRoot.classList.add('visible');
+  window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => {
+    noticeRoot.classList.remove('visible');
+    noticeRoot.innerHTML = '';
+  }, 2600);
+}
+
 function statusText(status) {
   if (status === 'yes') return 'מגיע';
   if (status === 'no') return 'לא מגיע';
@@ -56,12 +125,29 @@ function statusBadgeClass(status) {
   return 'pending';
 }
 
+function recommendationText(recommendation) {
+  if (recommendation === 'overlap') return 'חופף למשמרת אחרת';
+  if (recommendation === 'recent') return 'היה במשמרת לאחרונה';
+  if (recommendation === 'assigned') return 'כבר משויך למשמרת הזאת';
+  return 'מומלץ לשיבוץ';
+}
+
+function recommendationClass(recommendation) {
+  if (recommendation === 'overlap') return 'danger';
+  if (recommendation === 'recent') return 'warning';
+  if (recommendation === 'assigned') return 'pending';
+  return 'success';
+}
+
 function showError(message) {
+  stopUserTicker();
+  activeScreen = 'error';
   closeAdminOverlay();
   content.innerHTML = `
-    <div class="card center fade-in">
-      <div class="page-title">שגיאה</div>
-      <p class="subtitle">${escapeHtml(message)}</p>
+    <div class="surface surface-centered fade-in">
+      <div class="eyebrow">תקלה</div>
+      <div class="page-title">לא הצלחנו להשלים את הפעולה</div>
+      <p class="subtitle wide-copy">${escapeHtml(message)}</p>
       <div class="actions">
         <button class="secondary" onclick="initApp()">נסה שוב</button>
       </div>
@@ -75,8 +161,8 @@ function normalizePhone(phone) {
 
 function copyText(text) {
   navigator.clipboard.writeText(String(text || ''))
-    .then(() => alert('הועתק'))
-    .catch(() => alert('שגיאה בהעתקה'));
+    .then(() => showNotice('המידע הועתק ללוח', 'success'))
+    .catch(() => showNotice('ההעתקה נכשלה', 'danger'));
 }
 
 function openTelegramChat(username, phone) {
@@ -107,10 +193,10 @@ function openTelegramChat(username, phone) {
       return;
     }
 
-    alert('אין username או טלפון לפתיחת צ׳אט');
+    showNotice('אין פרטי קשר לפתיחת צ׳אט', 'warning');
   } catch (e) {
     console.error('openTelegramChat error:', e);
-    alert('לא ניתן לפתוח את הצ׳אט');
+    showNotice('לא ניתן לפתוח את הצ׳אט כרגע', 'danger');
   }
 }
 
@@ -122,11 +208,13 @@ function formatDateKey(dateObj) {
 }
 
 function parseDateKey(dateKey) {
-  return new Date(`${dateKey}T00:00:00`);
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1, 12, 0, 0));
 }
 
 function formatMonthTitle(dateObj) {
-  return dateObj.toLocaleDateString('he-IL', {
+  return new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), 1, 12)).toLocaleDateString('he-IL', {
+    timeZone: 'UTC',
     month: 'long',
     year: 'numeric'
   });
@@ -135,10 +223,88 @@ function formatMonthTitle(dateObj) {
 function formatHumanDate(dateKey) {
   if (!dateKey) return '';
   return parseDateKey(dateKey).toLocaleDateString('he-IL', {
+    timeZone: 'UTC',
     weekday: 'long',
     day: 'numeric',
-    month: 'long'
+    month: 'long',
+    year: 'numeric'
   });
+}
+
+function formatHumanTimeRange(shift) {
+  return `${shift.start_time} - ${shift.end_time}`;
+}
+
+function formatClockLabel(date = new Date()) {
+  return date.toLocaleTimeString('he-IL', {
+    timeZone: ISRAEL_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function formatHoursLabel(hours) {
+  const value = Number(hours || 0);
+  if (Number.isInteger(value)) {
+    return `${value}`;
+  }
+
+  return value.toFixed(1);
+}
+
+function formatDurationLabel(ms) {
+  const totalMinutes = Math.max(0, Math.floor(ms / (1000 * 60)));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (!hours) return `${minutes} דק׳`;
+  if (!minutes) return `${hours} ש׳`;
+  return `${hours} ש׳ ${minutes} דק׳`;
+}
+
+function formatRelativeDuration(ms, suffixFuture = 'עד תחילת המשמרת', suffixPast = 'מתחילת המשמרת') {
+  if (ms < 0) {
+    return `${formatDurationLabel(Math.abs(ms))} ${suffixFuture}`;
+  }
+
+  return `${formatDurationLabel(ms)} ${suffixPast}`;
+}
+
+function getShiftLiveTiming(shift, nowMs = Date.now()) {
+  if (!shift?.timing?.start_iso || !shift?.timing?.end_iso) {
+    return {
+      durationMs: 0,
+      elapsedMs: 0,
+      remainingMs: 0,
+      progressPercent: 0,
+      isActive: false,
+      isCompleted: false,
+      isUpcoming: false,
+      startsInMs: 0
+    };
+  }
+
+  const startMs = new Date(shift.timing.start_iso).getTime();
+  const endMs = new Date(shift.timing.end_iso).getTime();
+  const durationMs = Math.max(1, endMs - startMs);
+  const elapsedMs = Math.min(Math.max(nowMs - startMs, 0), durationMs);
+  const remainingMs = Math.max(endMs - nowMs, 0);
+  const isActive = nowMs >= startMs && nowMs < endMs;
+  const isCompleted = nowMs >= endMs;
+  const isUpcoming = nowMs < startMs;
+
+  return {
+    startMs,
+    endMs,
+    durationMs,
+    elapsedMs,
+    remainingMs,
+    startsInMs: Math.max(startMs - nowMs, 0),
+    progressPercent: Math.min(100, Math.max(0, (elapsedMs / durationMs) * 100)),
+    isActive,
+    isCompleted,
+    isUpcoming
+  };
 }
 
 function isSameDay(dateA, dateB) {
@@ -262,22 +428,33 @@ function renderShiftActions(shift, compact = false) {
 
 function renderShiftCard(shift, compact = false) {
   const problemCount = getShiftProblemCount(shift);
+  const badgeLabel = problemCount > 0 ? `דורש טיפול ${problemCount}` : 'סגור ומוכן';
 
   return `
-    <div class="list-item shift-card ${compact ? 'shift-card-compact' : ''}">
+    <div class="list-item shift-card ${compact ? 'shift-card-compact' : ''} ${problemCount > 0 ? 'shift-card-alert' : 'shift-card-ready'}">
       <div class="shift-card-head">
         <div>
           <div class="list-main">${escapeHtml(shift.title)}</div>
+          <div class="list-sub">${escapeHtml(formatHumanDate(shift.shift_date))}</div>
           <div class="list-sub">${escapeHtml(shift.start_time)} - ${escapeHtml(shift.end_time)}</div>
         </div>
         <div class="status-cluster">
-          <span class="badge ${problemCount > 0 ? 'warning' : 'success'}">
-            ${problemCount > 0 ? `דורש טיפול ${problemCount}` : 'סגור'}
-          </span>
+          <span class="badge ${problemCount > 0 ? 'warning' : 'success'}">${escapeHtml(badgeLabel)}</span>
         </div>
       </div>
 
       ${shift.notes ? `<div class="list-sub shift-notes">הערות: ${escapeHtml(shift.notes)}</div>` : ''}
+      ${
+        shift.problem_people?.length
+          ? `
+            <div class="problem-strip">
+              ${shift.problem_people.slice(0, 4).map((person) => `
+                <span class="badge ${statusBadgeClass(person.status)}">${escapeHtml(person.name)}</span>
+              `).join('')}
+            </div>
+          `
+          : ''
+      }
 
       <div class="stat-line">
         <span class="mini-stat">סה״כ ${shift.total || 0}</span>
@@ -319,6 +496,34 @@ function renderAssignedPersonCard(person) {
         ${person.username ? `<button class="secondary" onclick='copyText(${JSON.stringify(person.username)})'>העתק username</button>` : ''}
       </div>
     </div>
+  `;
+}
+
+function renderAssignableUserCard(user) {
+  return `
+    <label class="list-item checkbox-card ${user.has_overlap ? 'checkbox-card-disabled' : ''}">
+      <div class="checkbox-row">
+        <input
+          type="checkbox"
+          class="assign-user"
+          value="${user.id}"
+          ${user.assigned_to_target ? 'checked' : ''}
+          ${user.has_overlap ? 'disabled' : ''}
+        />
+        <div class="checkbox-body">
+          <div class="list-main">${escapeHtml(user.first_name)} ${escapeHtml(user.last_name)}</div>
+          <div class="list-sub">דרגה: ${escapeHtml(user.rank || '-')}</div>
+          <div class="list-sub">סוג שירות: ${escapeHtml(user.service_type || '-')}</div>
+          <div class="list-sub">משמרת אחרונה: ${escapeHtml(user.last_shift?.label || 'טרם שובץ')}</div>
+          ${user.rest_hours !== null ? `<div class="list-sub">זמן מנוחה עד המשמרת: ${escapeHtml(String(user.rest_hours))} שעות</div>` : ''}
+          ${user.overlap_shift ? `<div class="list-sub danger-text">חופף עם: ${escapeHtml(user.overlap_shift.label)}</div>` : ''}
+          <div class="status-cluster">
+            <span class="badge ${recommendationClass(user.recommendation)}">${escapeHtml(recommendationText(user.recommendation))}</span>
+            ${user.assigned_to_target ? '<span class="badge pending">כבר משויך</span>' : ''}
+          </div>
+        </div>
+      </div>
+    </label>
   `;
 }
 
@@ -394,7 +599,7 @@ function renderAdminOverlay() {
       </div>
     `;
   } else if (adminOverlayState.type === 'create-shift') {
-    const dateKey = adminOverlayState.dateKey || selectedAdminDate || formatDateKey(new Date());
+    const dateKey = adminOverlayState.dateKey || selectedAdminDate || getCurrentIsraelDateKey();
 
     overlayContent = `
       <div class="overlay-header">
@@ -540,18 +745,7 @@ function renderAdminOverlay() {
       <div class="checkbox-list">
         ${
           users.length
-            ? users.map((user) => `
-                <label class="list-item checkbox-card">
-                  <div class="checkbox-row">
-                    <input type="checkbox" class="assign-user" value="${user.id}" />
-                    <div>
-                      <div class="list-main">${escapeHtml(user.first_name)} ${escapeHtml(user.last_name)}</div>
-                      <div class="list-sub">דרגה: ${escapeHtml(user.rank || '')}</div>
-                      <div class="list-sub">סוג שירות: ${escapeHtml(user.service_type || '')}</div>
-                    </div>
-                  </div>
-                </label>
-              `).join('')
+            ? users.map((user) => renderAssignableUserCard(user)).join('')
             : `
               <div class="empty-state">
                 <div class="page-title">אין משתמשים זמינים</div>
@@ -579,73 +773,311 @@ function renderAdminOverlay() {
 
 // ================= USER =================
 
-async function loadUser() {
-  closeAdminOverlay();
+function stopUserTicker() {
+  if (userTicker) {
+    window.clearInterval(userTicker);
+    userTicker = null;
+  }
+}
 
-  try {
-    const data = await api('/me/next-shift');
-    const shift = data.shift;
-
-    if (!shift) {
-      content.innerHTML = `
-        <div class="card empty-state fade-in">
-          <div class="page-title">אין משמרות כרגע</div>
-          <p>כרגע לא שובצה לך משמרת חדשה</p>
-          <div class="actions">
-            <button class="secondary" onclick="showModeSelect()">חזרה</button>
-          </div>
-        </div>
-      `;
-      return;
+function startUserTicker() {
+  stopUserTicker();
+  userTicker = window.setInterval(() => {
+    if (activeScreen === 'user' && userDashboardState) {
+      renderUserDashboard(userDashboardState.profile, userDashboardState.shifts);
     }
+  }, 15000);
+}
 
-    content.innerHTML = `
-      <div class="card fade-in">
-        <div class="subtitle">כניסה רגילה</div>
-        <div class="page-title">${escapeHtml(shift.title)}</div>
-        <div class="divider"></div>
+function renderUserResponseActions(shift, liveTiming) {
+  if (!shift || liveTiming.isCompleted) {
+    return `
+      <div class="actions">
+        <button class="secondary" onclick="showModeSelect()">חזרה</button>
+      </div>
+    `;
+  }
 
-        <div class="stagger">
-          <div class="list-item">
-            <div class="list-main">תאריך</div>
-            <div class="list-sub">${escapeHtml(shift.shift_date)}</div>
-          </div>
+  return `
+    <div class="actions">
+      <button class="success" onclick="respond(${shift.id}, 'yes')">אני מגיע</button>
+      <button class="warning" onclick="respond(${shift.id}, 'maybe')">לא בטוח</button>
+      <button class="danger" onclick="showNoReasonForm(${shift.id})">לא מגיע</button>
+      <button class="secondary" onclick="showModeSelect()">חזרה</button>
+    </div>
+  `;
+}
 
-          <div class="list-item">
-            <div class="list-main">שעה</div>
-            <div class="list-sub">${escapeHtml(shift.start_time)} - ${escapeHtml(shift.end_time)}</div>
-          </div>
+function renderNextReplacementBlock(shift) {
+  if (!shift?.next_shift) return '';
 
-          <div class="list-item">
-            <div class="list-main">סטטוס</div>
-            <div style="margin-top: 8px;">
-              <span class="badge ${statusBadgeClass(shift.status)}">${statusText(shift.status)}</span>
-            </div>
-          </div>
+  const names = (shift.replacement_people || [])
+    .slice(0, 3)
+    .map((person) => [person.first_name, person.last_name].filter(Boolean).join(' '))
+    .filter(Boolean);
 
-          ${shift.comment ? `
-            <div class="list-item">
-              <div class="list-main">סיבה</div>
-              <div class="list-sub">${escapeHtml(shift.comment)}</div>
-            </div>
-          ` : ''}
+  return `
+    <div class="note-box handover-box">
+      <div class="label">החלפה הבאה</div>
+      <div class="list-main">${escapeHtml(shift.next_shift.title)}</div>
+      <div class="list-sub">${escapeHtml(shift.next_shift.shift_date)} · ${escapeHtml(shift.next_shift.start_time)} - ${escapeHtml(shift.next_shift.end_time)}</div>
+      ${
+        names.length
+          ? `<div class="supporting-copy">צוות מתחלף: ${escapeHtml(names.join(', '))}</div>`
+          : '<div class="supporting-copy">עדיין לא שובצו מחליפים למשמרת הבאה.</div>'
+      }
+    </div>
+  `;
+}
 
-          ${shift.notes ? `
-            <div class="list-item">
-              <div class="list-main">הערות</div>
-              <div class="list-sub">${escapeHtml(shift.notes)}</div>
-            </div>
-          ` : ''}
+function renderTimelineCard(shift, isFocus = false) {
+  const liveTiming = getShiftLiveTiming(shift);
+  const liveLabel = liveTiming.isActive
+    ? 'במהלך משמרת'
+    : liveTiming.isUpcoming
+      ? `מתחילה בעוד ${formatDurationLabel(liveTiming.startsInMs)}`
+      : 'הסתיימה';
+  const tone = liveTiming.isActive ? 'success' : liveTiming.isUpcoming ? 'warning' : 'pending';
+
+  return `
+    <div class="timeline-card ${isFocus ? 'timeline-card-focus' : ''}">
+      <div class="timeline-card-head">
+        <div>
+          <div class="list-main">${escapeHtml(shift.title)}</div>
+          <div class="list-sub">${escapeHtml(formatHumanDate(shift.shift_date))}</div>
         </div>
+        <span class="badge ${tone}">${escapeHtml(liveLabel)}</span>
+      </div>
+      <div class="timeline-meta">
+        <span class="mini-stat">${escapeHtml(formatHumanTimeRange(shift))}</span>
+        <span class="mini-stat">${escapeHtml(statusText(shift.status))}</span>
+        <span class="mini-stat muted-text">${formatHoursLabel(shift.duration_hours)} ש׳ מתוכננות</span>
+      </div>
+      ${shift.comment ? `<div class="supporting-copy">סיבה שנשמרה: ${escapeHtml(shift.comment)}</div>` : ''}
+    </div>
+  `;
+}
 
-        <div class="actions">
-          <button class="success" onclick="respond(${shift.id}, 'yes')">אני מגיע</button>
-          <button class="danger" onclick="showNoReasonForm(${shift.id})">לא מגיע</button>
-          <button class="warning" onclick="respond(${shift.id}, 'maybe')">לא בטוח</button>
-          <button class="secondary" onclick="showModeSelect()">חזרה</button>
+function renderUserDashboard(profile, shifts) {
+  const safeProfile = profile || { user: {}, stats: {} };
+  const user = safeProfile.user || {};
+  const completedStats = safeProfile.stats || {};
+  const nowMs = Date.now();
+  const normalizedShifts = (shifts || []).map((shift) => ({
+    ...shift,
+    liveTiming: getShiftLiveTiming(shift, nowMs)
+  }));
+
+  const activeShift = normalizedShifts.find((shift) => shift.liveTiming.isActive) || null;
+  const nextUpcomingShift = normalizedShifts.find((shift) => shift.liveTiming.isUpcoming) || null;
+  const fallbackShift = normalizedShifts.length ? normalizedShifts[normalizedShifts.length - 1] : null;
+  const focusShift = activeShift || nextUpcomingShift || normalizedShifts.find((shift) => !shift.liveTiming.isCompleted) || fallbackShift;
+  const focusTiming = focusShift ? focusShift.liveTiming : null;
+  const otherShifts = normalizedShifts.filter((shift) => shift.id !== focusShift?.id).slice(0, 4);
+  const upcomingCount = normalizedShifts.filter((shift) => shift.liveTiming.isUpcoming).length;
+  const totalAssigned = normalizedShifts.length;
+  const currentClock = getCurrentIsraelTimeLabel();
+  const todayLabel = formatHumanDate(getCurrentIsraelDateKey());
+
+  let headline = 'כל המשמרות שלך במקום אחד';
+  let focusTag = 'המשמרת הקרובה';
+  let progressCopy = 'כאן מופיעים פרטי המשמרת והתגובה שלך.';
+  let progressTrack = '';
+  let supportPanel = '';
+
+  if (focusShift && focusTiming?.isActive) {
+    headline = 'אתה כרגע במהלך משמרת';
+    focusTag = 'משמרת פעילה עכשיו';
+    progressCopy = `עברו ${formatDurationLabel(focusTiming.elapsedMs)} מתוך ${formatDurationLabel(focusTiming.durationMs)} · ${Math.round(focusTiming.progressPercent)}% הושלמו`;
+    progressTrack = `
+      <div class="progress-panel">
+        <div class="progress-panel-head">
+          <span>משך שעבר</span>
+          <strong>${Math.round(focusTiming.progressPercent)}%</strong>
+        </div>
+        <div class="progress-track">
+          <span style="width: ${Math.max(4, focusTiming.progressPercent)}%"></span>
+        </div>
+        <div class="progress-meta">
+          <span>${formatDurationLabel(focusTiming.elapsedMs)} מהתחלה</span>
+          <span>${formatDurationLabel(focusTiming.remainingMs)} לסיום</span>
         </div>
       </div>
     `;
+    supportPanel = renderNextReplacementBlock(focusShift);
+  } else if (focusShift && focusTiming?.isUpcoming) {
+    headline = 'המשמרת הבאה כבר מוכנה';
+    focusTag = 'בקרוב מתחיל';
+    progressCopy = `נשארו ${formatDurationLabel(focusTiming.startsInMs)} עד תחילת המשמרת.`;
+    progressTrack = `
+      <div class="support-strip">
+        <span class="mini-stat warning-text">מתחילה בעוד ${formatDurationLabel(focusTiming.startsInMs)}</span>
+        <span class="mini-stat muted-text">${formatHoursLabel(focusShift.duration_hours)} ש׳ מתוכננות</span>
+      </div>
+    `;
+  } else if (!focusShift) {
+    headline = 'אין כרגע משמרת פעילה או קרובה';
+    focusTag = 'לוח אישי';
+    progressCopy = 'כשתשובץ משמרת חדשה, היא תופיע כאן בצורה ברורה ומרוכזת.';
+  }
+
+  content.innerHTML = `
+    <div class="view-shell user-view fade-in">
+      <section class="hero-panel user-hero">
+        <div>
+          <div class="eyebrow">מרחב אישי</div>
+          <div class="page-title">שלום ${escapeHtml(user.first_name || 'לך')}</div>
+          <p class="subtitle wide-copy">${escapeHtml(headline)}</p>
+        </div>
+        <div class="hero-meta">
+          <span class="meta-pill meta-pill-strong">${escapeHtml(todayLabel)}</span>
+          <span class="meta-pill">השעה כעת ${escapeHtml(currentClock)}</span>
+          <span class="meta-pill">שעון ישראל</span>
+        </div>
+      </section>
+
+      <section class="dashboard-layout">
+        <div class="surface focus-surface ${focusTiming?.isActive ? 'focus-surface-active' : ''}">
+          <div class="focus-header">
+            <div>
+              <div class="eyebrow">${escapeHtml(focusTag)}</div>
+              <div class="section-title">${escapeHtml(focusShift?.title || 'אין משמרת זמינה')}</div>
+              <p class="subtitle wide-copy">${escapeHtml(progressCopy)}</p>
+            </div>
+            ${
+              focusShift
+                ? `<span class="badge ${focusTiming?.isActive ? 'success' : focusTiming?.isUpcoming ? 'warning' : 'pending'}">${escapeHtml(focusTiming?.isActive ? 'פעילה עכשיו' : focusTiming?.isUpcoming ? 'ממתינה להתחלה' : 'ללא פעילות')}</span>`
+                : ''
+            }
+          </div>
+
+          ${
+            focusShift
+              ? `
+                <div class="focus-info-grid">
+                  <div class="info-tile">
+                    <div class="label">תאריך</div>
+                    <div class="info-value">${escapeHtml(formatHumanDate(focusShift.shift_date))}</div>
+                  </div>
+                  <div class="info-tile">
+                    <div class="label">טווח שעות</div>
+                    <div class="info-value">${escapeHtml(formatHumanTimeRange(focusShift))}</div>
+                  </div>
+                  <div class="info-tile">
+                    <div class="label">סטטוס תגובה</div>
+                    <div class="info-value">
+                      <span class="badge ${statusBadgeClass(focusShift.status)}">${escapeHtml(statusText(focusShift.status))}</span>
+                    </div>
+                  </div>
+                  <div class="info-tile">
+                    <div class="label">${focusTiming?.isActive ? 'זמן שעבר' : focusTiming?.isUpcoming ? 'זמן עד התחלה' : 'משך מתוכנן'}</div>
+                    <div class="info-value">
+                      ${
+                        focusTiming?.isActive
+                          ? escapeHtml(formatDurationLabel(focusTiming.elapsedMs))
+                          : focusTiming?.isUpcoming
+                            ? escapeHtml(formatDurationLabel(focusTiming.startsInMs))
+                            : escapeHtml(formatDurationLabel(focusTiming?.durationMs || 0))
+                      }
+                    </div>
+                  </div>
+                </div>
+                ${progressTrack}
+                ${focusShift.notes ? `<div class="note-box"><div class="label">הערות למשמרת</div><div class="list-sub">${escapeHtml(focusShift.notes)}</div></div>` : ''}
+                ${focusShift.comment ? `<div class="note-box"><div class="label">סיבה שנשמרה</div><div class="list-sub">${escapeHtml(focusShift.comment)}</div></div>` : ''}
+                ${supportPanel}
+                ${renderUserResponseActions(focusShift, focusTiming)}
+              `
+              : `
+                <div class="empty-state panel-empty">
+                  <div class="section-title">אין כרגע משמרות להצגה</div>
+                  <p class="subtitle">המערכת תציג כאן אוטומטית את המשמרת הפעילה או הקרובה ביותר.</p>
+                  <div class="actions">
+                    <button class="secondary" onclick="showModeSelect()">חזרה</button>
+                  </div>
+                </div>
+              `
+          }
+        </div>
+
+        <aside class="summary-column">
+          <div class="surface summary-surface">
+            <div class="eyebrow">סטטוס אישי</div>
+            <div class="stats-grid">
+              <div class="stat-tile">
+                <span class="stat-label">משמרות שהושלמו</span>
+                <strong>${completedStats.completed_shifts || 0}</strong>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-label">שעות שבוצעו</span>
+                <strong>${formatHoursLabel(completedStats.completed_hours || 0)}</strong>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-label">משמרות עתידיות</span>
+                <strong>${upcomingCount}</strong>
+              </div>
+              <div class="stat-tile">
+                <span class="stat-label">סה״כ שיבוצים</span>
+                <strong>${totalAssigned}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="surface summary-surface subtle-surface">
+            <div class="eyebrow">זמן נוכחי</div>
+            <div class="section-title">${escapeHtml(currentClock)}</div>
+            <p class="subtitle">כל ההצגות והחישובים במסך הזה עובדים לפי ${escapeHtml(ISRAEL_TIMEZONE)}.</p>
+          </div>
+        </aside>
+      </section>
+
+      <section class="surface timeline-surface">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">ציר משמרות</div>
+            <div class="section-title">מבט מהיר על השיבוצים שלך</div>
+          </div>
+          <span class="meta-pill">${totalAssigned} משמרות במערכת</span>
+        </div>
+
+        ${
+          focusShift || otherShifts.length
+            ? `
+              <div class="timeline-list">
+                ${focusShift ? renderTimelineCard(focusShift, true) : ''}
+                ${otherShifts.map((shift) => renderTimelineCard(shift)).join('')}
+              </div>
+            `
+            : `
+              <div class="empty-state panel-empty">
+                <div class="section-title">עדיין אין היסטוריית משמרות</div>
+                <p class="subtitle">ברגע שתשובץ למשמרת, היא תופיע כאן יחד עם הסטטוס והזמנים שלה.</p>
+              </div>
+            `
+        }
+      </section>
+    </div>
+  `;
+}
+
+async function loadUser() {
+  stopUserTicker();
+  closeAdminOverlay();
+  activeScreen = 'user';
+
+  try {
+    const [profileData, shiftsData] = await Promise.all([
+      api('/me/profile'),
+      api('/me/shifts')
+    ]);
+
+    userDashboardState = {
+      profile: profileData,
+      shifts: shiftsData.shifts || []
+    };
+
+    renderUserDashboard(profileData, shiftsData.shifts || []);
+    startUserTicker();
   } catch (err) {
     showError(err.message || 'שגיאה בטעינת המשמרת');
   }
@@ -659,22 +1091,26 @@ async function respond(id, status, comment = '') {
     });
 
     pendingNoShiftId = null;
+    showNotice('התגובה שלך נשמרה', 'success');
     await loadUser();
   } catch (err) {
-    alert(err.message || 'שגיאה');
+    showNotice(err.message || 'שגיאה', 'danger');
   }
 }
 
 function showNoReasonForm(shiftId) {
+  stopUserTicker();
   pendingNoShiftId = shiftId;
+  activeScreen = 'user';
 
   content.innerHTML = `
-    <div class="card fade-in">
+    <div class="surface surface-form fade-in">
+      <div class="eyebrow">עדכון תגובה</div>
       <div class="page-title">אי הגעה למשמרת</div>
-      <p class="subtitle">יש לכתוב סיבה לאי הגעה</p>
+      <p class="subtitle wide-copy">כדי לעדכן שאינך מגיע, צריך לצרף סיבה קצרה וברורה.</p>
 
       <div class="label">סיבה</div>
-      <textarea id="no-reason-input" placeholder="כתוב כאן את הסיבה"></textarea>
+      <textarea id="no-reason-input" placeholder="כתוב כאן את הסיבה לאי ההגעה"></textarea>
 
       <div class="actions">
         <button class="danger" onclick="submitNoReason()">שלח</button>
@@ -688,7 +1124,7 @@ function submitNoReason() {
   const reason = document.getElementById('no-reason-input')?.value.trim() || '';
 
   if (!reason) {
-    alert('יש להזין סיבה');
+    showNotice('יש להזין סיבה לפני השליחה', 'warning');
     return;
   }
 
@@ -698,6 +1134,9 @@ function submitNoReason() {
 // ================= ADMIN =================
 
 async function loadAdmin(overlayToOpen = null) {
+  stopUserTicker();
+  activeScreen = 'admin';
+
   try {
     const profile = await api('/me/profile');
     const user = profile.user;
@@ -720,7 +1159,8 @@ async function loadAdmin(overlayToOpen = null) {
     adminShiftsCache = data.shifts || [];
 
     if (!selectedAdminDate) {
-      selectedAdminDate = formatDateKey(new Date());
+      selectedAdminDate = getCurrentIsraelDateKey();
+      adminCalendarDate = getCurrentIsraelCalendarMonth();
     }
 
     renderAdminCalendar();
@@ -737,7 +1177,7 @@ async function loadAdmin(overlayToOpen = null) {
 
 function renderAdminCalendar() {
   const current = new Date(adminCalendarDate.getFullYear(), adminCalendarDate.getMonth(), 1);
-  const today = new Date();
+  const todayKey = getCurrentIsraelDateKey();
   const monthTitle = formatMonthTitle(current);
   const monthStats = getCurrentMonthStats(current);
   const selectedDay = getSelectedDayOverview(selectedAdminDate);
@@ -746,7 +1186,7 @@ function renderAdminCalendar() {
   const calendarCellsHtml = monthCells.map(({ dateObj, muted }) => {
     const dateKey = formatDateKey(dateObj);
     const dayStats = getCalendarDayStats(dateKey);
-    const isToday = isSameDay(dateObj, today);
+    const isToday = dateKey === todayKey;
     const isSelected = selectedAdminDate === dateKey;
     const hasShifts = dayStats.total > 0;
 
@@ -772,12 +1212,12 @@ function renderAdminCalendar() {
     <div class="card admin-header-card fade-in">
       <div class="admin-header-main">
         <div>
-          <div class="subtitle">כניסת מנהל</div>
+          <div class="eyebrow">כניסת מנהל</div>
           <div class="page-title">יומן משמרות</div>
           <p class="admin-header-copy">לחץ על יום בלוח כדי לפתוח חלון פעולות, ליצור משמרת חדשה ולטפל במה שדורש מענה.</p>
         </div>
         <div class="admin-header-actions">
-          <button onclick="showCreateShiftForm('${escapeHtml(selectedAdminDate || formatDateKey(new Date()))}')">משמרת חדשה</button>
+          <button onclick="showCreateShiftForm('${escapeHtml(selectedAdminDate || getCurrentIsraelDateKey())}')">משמרת חדשה</button>
           <button class="secondary" onclick="showModeSelect()">חזרה</button>
         </div>
       </div>
@@ -870,9 +1310,8 @@ function changeAdminMonth(delta) {
 }
 
 function goToToday() {
-  const today = new Date();
-  adminCalendarDate = new Date(today.getFullYear(), today.getMonth(), 1);
-  selectedAdminDate = formatDateKey(today);
+  adminCalendarDate = getCurrentIsraelCalendarMonth();
+  selectedAdminDate = getCurrentIsraelDateKey();
   renderAdminCalendar();
   showDayPlanner(selectedAdminDate);
 }
@@ -892,7 +1331,7 @@ function showDayPlanner(dateKey = selectedAdminDate) {
 function showCreateShiftForm(dateKey = selectedAdminDate) {
   setAdminOverlay({
     type: 'create-shift',
-    dateKey: dateKey || formatDateKey(new Date())
+    dateKey: dateKey || getCurrentIsraelDateKey()
   });
 }
 
@@ -916,8 +1355,9 @@ async function createShift() {
     }
 
     await loadAdmin({ type: 'day', dateKey: selectedAdminDate });
+    showNotice('המשמרת נוצרה בהצלחה', 'success');
   } catch (err) {
-    alert(err.message || 'שגיאה');
+    showNotice(err.message || 'שגיאה', 'danger');
   }
 }
 
@@ -925,7 +1365,7 @@ function showEditShiftForm(id) {
   const shift = getShiftById(id);
 
   if (!shift) {
-    alert('המשמרת לא נמצאה');
+    showNotice('המשמרת לא נמצאה', 'warning');
     return;
   }
 
@@ -954,10 +1394,10 @@ async function updateShift(id) {
       adminCalendarDate = new Date(y, m - 1, 1);
     }
 
-    alert('המשמרת עודכנה ונשלחה הודעה למשתמשים');
+    showNotice('המשמרת עודכנה והמשתמשים קיבלו הודעה', 'success');
     await loadAdmin({ type: 'day', dateKey: selectedAdminDate });
   } catch (err) {
-    alert(err.message || 'שגיאה');
+    showNotice(err.message || 'שגיאה', 'danger');
   }
 }
 
@@ -971,13 +1411,13 @@ async function deleteShift(id) {
       method: 'DELETE'
     });
 
-    alert(`המשמרת נמחקה. נשלחו ${result.notifications_sent || 0} הודעות.`);
+    showNotice(`המשמרת נמחקה. נשלחו ${result.notifications_sent || 0} הודעות.`, 'success');
     await loadAdmin({
       type: 'day',
       dateKey: shift?.shift_date || selectedAdminDate
     });
   } catch (err) {
-    alert(err.message || 'שגיאה');
+    showNotice(err.message || 'שגיאה', 'danger');
   }
 }
 
@@ -999,7 +1439,7 @@ async function openShift(id) {
 async function showAssignUsers(shiftId) {
   try {
     const shift = getShiftById(shiftId);
-    const data = await api('/admin/users');
+    const data = await api(`/admin/users?shift_id=${shiftId}`);
 
     setAdminOverlay({
       type: 'assign-users',
@@ -1021,7 +1461,7 @@ async function assignUsers(shiftId) {
       body: JSON.stringify({ user_ids: selected })
     });
 
-    alert('המשתמשים שובצו ונשלחה הודעה בבוט');
+    showNotice('המשתמשים שובצו ונשלחה הודעה בבוט', 'success');
     const shift = getShiftById(shiftId);
     await loadAdmin({
       type: 'shift-details',
@@ -1029,23 +1469,26 @@ async function assignUsers(shiftId) {
       people: (await api(`/admin/shifts/${shiftId}`)).people || []
     });
   } catch (err) {
-    alert(err.message || 'שגיאה');
+    showNotice(err.message || 'שגיאה', 'danger');
   }
 }
 
 // ================= MODE SELECT =================
 
 async function showModeSelect() {
+  stopUserTicker();
   closeAdminOverlay();
+  activeScreen = 'mode-select';
 
   try {
     const profile = await api('/me/profile');
 
     if (!profile.registered) {
       content.innerHTML = `
-        <div class="card center fade-in">
+        <div class="surface surface-centered fade-in">
+          <div class="eyebrow">חיבור לחשבון</div>
           <div class="page-title">אינך רשום במערכת</div>
-          <p class="subtitle">יש לחזור לבוט ולשלוח /start</p>
+          <p class="subtitle wide-copy">יש לחזור לבוט, לשלוח <code>/start</code> ולהשלים את תהליך ההרשמה.</p>
         </div>
       `;
       return;
@@ -1055,9 +1498,10 @@ async function showModeSelect() {
 
     if (user.registration_status === 'pending_review') {
       content.innerHTML = `
-        <div class="card center fade-in">
+        <div class="surface surface-centered fade-in">
+          <div class="eyebrow">ממתין לאישור</div>
           <div class="page-title">הבקשה שלך ממתינה לאישור</div>
-          <p class="subtitle">לאחר אישור תוכל להיכנס למערכת</p>
+          <p class="subtitle wide-copy">ברגע שהמנהל יאשר את ההרשמה, הכניסה למערכת תיפתח אוטומטית.</p>
         </div>
       `;
       return;
@@ -1065,22 +1509,42 @@ async function showModeSelect() {
 
     if (user.registration_status === 'rejected') {
       content.innerHTML = `
-        <div class="card center fade-in">
+        <div class="surface surface-centered fade-in">
+          <div class="eyebrow">סטטוס הרשמה</div>
           <div class="page-title">ההרשמה נדחתה</div>
-          <p class="subtitle">יש לשלוח /start מחדש בבוט</p>
+          <p class="subtitle wide-copy">אפשר לחזור לבוט, לשלוח <code>/start</code> ולהגיש את הפרטים מחדש.</p>
         </div>
       `;
       return;
     }
 
     content.innerHTML = `
-      <div class="card center fade-in">
-        <div class="page-title">ברוך הבא ${escapeHtml(user.first_name || '')}</div>
-        <p class="subtitle">בחר איך תרצה להיכנס עכשיו</p>
-        <div class="actions">
-          <button onclick="loadUser()">כניסה רגילה</button>
-          <button class="secondary" onclick="loadAdmin()">כניסת מנהל</button>
-        </div>
+      <div class="view-shell fade-in">
+        <section class="hero-panel mode-hero">
+          <div>
+            <div class="eyebrow">9950 Shift System</div>
+            <div class="page-title">ברוך הבא ${escapeHtml(user.first_name || '')}</div>
+            <p class="subtitle wide-copy">בחר את סביבת העבודה שמתאימה לך עכשיו. האזור האישי שם את המשמרת שחשובה כרגע במרכז, ואזור המנהל נותן מבט ברור על כל ימי הלוח.</p>
+          </div>
+          <div class="hero-meta">
+            <span class="meta-pill meta-pill-strong">${escapeHtml(formatHumanDate(getCurrentIsraelDateKey()))}</span>
+            <span class="meta-pill">השעה כעת ${escapeHtml(getCurrentIsraelTimeLabel())}</span>
+            <span class="meta-pill">שעון ישראל</span>
+          </div>
+        </section>
+
+        <section class="mode-grid">
+          <button class="mode-card mode-card-primary" onclick="loadUser()">
+            <span class="mode-card-tag">אישי</span>
+            <strong>לוח משמרות אישי</strong>
+            <span>המשמרת הפעילה או הקרובה, זמן שעבר, התקדמות ותגובה מהירה במקום אחד.</span>
+          </button>
+          <button class="mode-card" onclick="loadAdmin()">
+            <span class="mode-card-tag">ניהול</span>
+            <strong>יומן משמרות למנהל</strong>
+            <span>לוח חודשי, בעיות שדורשות טיפול, פתיחת יום ושיבוץ מהיר של אנשים.</span>
+          </button>
+        </section>
       </div>
     `;
   } catch (err) {
