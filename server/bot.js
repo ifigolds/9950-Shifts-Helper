@@ -29,6 +29,11 @@ function buildThanksUrl() {
   return `https://t.me/${BOT_TEXT.thanksUsername}?text=${encodeURIComponent(BOT_TEXT.thanksMessage)}`;
 }
 
+function buildTemplateUrl() {
+  const baseUrl = String(process.env.BASE_URL || 'https://9950-shifts-helper.vercel.app').replace(/\/+$/, '');
+  return `${baseUrl}/shift-import-template.xlsx`;
+}
+
 function getBootstrapAdminIds() {
   return String(process.env.ADMIN_TELEGRAM_IDS || '')
     .split(',')
@@ -256,6 +261,38 @@ bot.onText(/\/thanks/, async (msg) => {
     await bot.sendMessage(chatId, `${BOT_TEXT.thanks.previewLabel}\n${BOT_TEXT.thanksMessage}`);
   } catch (err) {
     console.error('/thanks error:', err);
+  }
+});
+
+bot.onText(/\/template/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    const isAdmin = await isAdminByTelegramId(msg.from.id);
+
+    if (!isAdmin) {
+      await bot.sendMessage(chatId, BOT_TEXT.importTemplate.adminOnly);
+      return;
+    }
+
+    await bot.sendMessage(
+      chatId,
+      BOT_TEXT.importTemplate.prompt,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: BOT_TEXT.importTemplate.button,
+                url: buildTemplateUrl(),
+              },
+            ],
+          ],
+        },
+      }
+    );
+  } catch (err) {
+    console.error('/template error:', err);
   }
 });
 

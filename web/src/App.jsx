@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 const API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-9950.png'
@@ -6,6 +6,7 @@ const MIN_BOOT_MS = 1400
 const ISRAEL_TIMEZONE = 'Asia/Jerusalem'
 const WEEKDAYS = ['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳']
 const BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'local build'
+const IMPORT_TEMPLATE_URL = '/shift-import-template.xlsx'
 
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
@@ -117,6 +118,8 @@ function emptyShiftForm(dateKey = getCurrentIsraelDateKey()) {
     shift_date: dateKey,
     start_time: '',
     end_time: '',
+    shift_type: '',
+    location: '',
     notes: '',
   }
 }
@@ -127,6 +130,33 @@ function normalizePhone(phone) {
 
 function personName(person) {
   return [person.first_name, person.last_name].filter(Boolean).join(' ') || 'לא צוין'
+}
+
+function getShiftMetaLine(shift) {
+  return [shift.shift_type, shift.location].filter(Boolean).join(' · ')
+}
+
+function importStatusText(status) {
+  if (status === 'imported') return 'יובא'
+  if (status === 'preview') return 'תצוגה מקדימה'
+  if (status === 'no_changes') return 'ללא שינויים'
+  return status || 'לא ידוע'
+}
+
+function formatLogDateTime(value, timeZone = ISRAEL_TIMEZONE) {
+  const normalized = String(value || '').trim()
+  if (!normalized) return ''
+
+  const isoCandidate = normalized.includes('T')
+    ? normalized
+    : `${normalized.replace(' ', 'T')}Z`
+
+  const parsed = new Date(isoCandidate)
+  if (Number.isNaN(parsed.getTime())) {
+    return normalized
+  }
+
+  return parsed.toLocaleString('he-IL', { timeZone })
 }
 
 function isSameDay(dateA, dateB) {
@@ -298,6 +328,10 @@ export default function App() {
   const [noReason, setNoReason] = useState('')
 
   const [adminShifts, setAdminShifts] = useState([])
+  const [importRuns, setImportRuns] = useState([])
+  const [importPreview, setImportPreview] = useState(null)
+  const [importFileName, setImportFileName] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
   const [calendarDate, setCalendarDate] = useState(getCurrentIsraelCalendarMonth())
   const [selectedDate, setSelectedDate] = useState(getCurrentIsraelDateKey())
 
@@ -307,6 +341,7 @@ export default function App() {
   const [overlayPeople, setOverlayPeople] = useState([])
   const [overlayUsers, setOverlayUsers] = useState([])
   const [selectedUserIds, setSelectedUserIds] = useState([])
+  const importInputRef = useRef(null)
 
   const timezoneLabel = profile?.timezone || ISRAEL_TIMEZONE
   const referenceNow = resolveReferenceNow(serverClock)
@@ -483,6 +518,11 @@ export default function App() {
     syncServerNow(data?.now?.iso)
   }
 
+  async function loadImportRuns() {
+    const data = await api('/admin/shift-import-runs')
+    setImportRuns(data.runs || [])
+  }
+
   function getShiftById(shiftId) {
     return adminShifts.find((shift) => Number(shift.id) === Number(shiftId)) || null
   }
@@ -646,7 +686,7 @@ export default function App() {
       }
 
       syncCalendarToDateKey(todayKey)
-      await loadAdminShifts()
+      await Promise.all([loadAdminShifts(), loadImportRuns()])
       setOverlay(null)
       setMode('admin')
     } catch (err) {
@@ -657,7 +697,7 @@ export default function App() {
   async function refreshAdminCalendar() {
     try {
       setError('')
-      await loadAdminShifts()
+      await Promise.all([loadAdminShifts(), loadImportRuns()])
     } catch (err) {
       setError(err.message || 'שגיאה ברענון לוח המשמרות')
     }
@@ -714,6 +754,8 @@ export default function App() {
       shift_date: shift.shift_date || todayKey,
       start_time: shift.start_time || '',
       end_time: shift.end_time || '',
+      shift_type: shift.shift_type || '',
+      location: shift.location || '',
       notes: shift.notes || '',
     })
     setOverlay({ type: 'edit-shift', shift })
@@ -830,6 +872,121 @@ export default function App() {
     }
   }
 
+  function openTemplateDownload() {
+    const tg = window.Telegram?.WebApp
+    const templateUrl = `${window.location.origin}${IMPORT_TEMPLATE_URL}`
+
+    if (tg && typeof tg.openLink === 'function') {
+      tg.openLink(templateUrl)
+      return
+    }
+
+    window.open(templateUrl, '_blank')
+  }
+
+  function openImportPicker() {
+    importInputRef.current?.click()
+  }
+
+  async function previewImportFile(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) return
+
+    try {
+      setError('')
+      setImportBusy(true)
+      setImportPreview(null)
+      setImportFileName(file.name)
+
+      if (!window.XLSX) {
+        throw new Error('ספריית Excel לא נטענה. נסה לפתוח מחדש את המערכת.')
+      }
+
+      const fileBuffer = await file.arrayBuffer()
+      const workbook = window.XLSX.read(fileBuffer, {
+        type: 'array',
+        cellDates: true,
+      })
+
+      const firstSheetName = workbook.SheetNames?.[0]
+      if (!firstSheetName) {
+        throw new Error('לא נמצאה לשונית בקובץ ה-Excel')
+      }
+
+      const sheet = workbook.Sheets[firstSheetName]
+      const parsedRows = window.XLSX.utils.sheet_to_json(sheet, {
+        defval: '',
+        raw: false,
+        dateNF: 'yyyy-mm-dd',
+      })
+
+      const rowsWithNumbers = parsedRows.map((row, index) => ({
+        ...row,
+        _rowNumber: index + 2,
+      }))
+
+      const preview = await api('/admin/shift-import/preview', {
+        method: 'POST',
+        body: JSON.stringify({
+          source_filename: file.name,
+          rows: rowsWithNumbers,
+        }),
+      })
+
+      setImportPreview(preview)
+      await loadImportRuns()
+    } catch (err) {
+      setImportPreview(null)
+      setError(err.message || 'שגיאה בקריאת קובץ ה-Excel')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  async function commitImportPreview() {
+    if (!importPreview?.ready_rows?.length) {
+      setError('אין שורות תקינות לייבוא')
+      return
+    }
+
+    try {
+      setError('')
+      setImportBusy(true)
+
+      const result = await api('/admin/shift-import/commit', {
+        method: 'POST',
+        body: JSON.stringify({
+          source_filename: importFileName,
+          rows: importPreview.ready_rows,
+        }),
+      })
+
+      setImportPreview({
+        source_filename: importFileName,
+        summary: {
+          total_rows: result.summary.total_rows,
+          ready_rows: result.summary.inserted_rows,
+          invalid_rows: result.summary.invalid_rows,
+          duplicate_rows: result.summary.duplicate_rows,
+          skipped_rows: result.summary.skipped_rows,
+        },
+        ready_rows: result.inserted_rows || [],
+        invalid_rows: result.invalid_rows || [],
+        duplicate_rows: result.duplicate_rows || [],
+        skipped_rows: result.skipped_rows || [],
+        imported: true,
+      })
+
+      await Promise.all([loadAdminShifts(), loadImportRuns()])
+    } catch (err) {
+      setError(err.message || 'שגיאה בייבוא המשמרות')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(String(text || ''))
@@ -938,6 +1095,7 @@ export default function App() {
   function renderAdminShiftCard(shift, compact = false) {
     const problemCount = getShiftProblemCount(shift)
     const badgeLabel = problemCount > 0 ? `דורש טיפול ${problemCount}` : 'סגור ומוכן'
+    const metaLine = getShiftMetaLine(shift)
 
     return (
       <div
@@ -949,6 +1107,7 @@ export default function App() {
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
             <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
           </div>
           <div className="status-cluster">
             <span className={`badge ${problemCount > 0 ? 'warning' : 'success'}`}>{badgeLabel}</span>
@@ -980,10 +1139,159 @@ export default function App() {
     )
   }
 
+  function renderImportRows(items, emptyText, tone = 'pending') {
+    if (!items?.length) {
+      return <div className="list-sub muted-text">{emptyText}</div>
+    }
+
+    return (
+      <div className="import-preview-list">
+        {items.slice(0, 6).map((item, index) => (
+          <div key={`${tone}-${item.row_number || index}`} className="import-preview-row">
+            <span className={`badge ${tone}`}>שורה {item.row_number || index + 2}</span>
+            <div className="import-preview-copy">
+              <div className="list-main">{item.row?.title || item.title || 'שורה ללא שם'}</div>
+              <div className="list-sub">
+                {item.row?.shift_date || item.shift_date || ''} {item.row?.start_time || item.start_time || ''} - {item.row?.end_time || item.end_time || ''}
+              </div>
+              {'reason' in item ? <div className="list-sub muted-text">{item.reason}</div> : null}
+              {'errors' in item ? <div className="list-sub danger-text">{item.errors.join(' · ')}</div> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  function renderImportRuns() {
+    if (!importRuns.length) {
+      return <div className="list-sub muted-text">עדיין לא בוצעו ייבואי Excel.</div>
+    }
+
+    return (
+      <div className="import-run-list">
+        {importRuns.slice(0, 5).map((run) => (
+          <div key={run.id} className="import-run-card">
+            <div className="import-run-head">
+              <div className="list-main">{run.source_filename || 'ייבוא ללא שם קובץ'}</div>
+              <span className={`badge ${run.inserted_rows ? 'success' : 'pending'}`}>{importStatusText(run.status)}</span>
+            </div>
+            <div className="list-sub">
+              {run.first_name || ''} {run.last_name || ''} · {formatLogDateTime(run.created_at, timezoneLabel)}
+            </div>
+            <div className="stat-line">
+              <span className="mini-stat success-text">נוספו {run.inserted_rows}</span>
+              <span className="mini-stat warning-text">כפילויות {run.duplicate_rows}</span>
+              <span className="mini-stat danger-text">שגויות {run.invalid_rows}</span>
+              <span className="mini-stat muted-text">ריקות {run.skipped_rows}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  function renderImportSection() {
+    const previewSummary = importPreview?.summary
+
+    return (
+      <section className="card admin-import-card">
+        <div className="section-head">
+          <div>
+            <div className="eyebrow">ייבוא Excel</div>
+            <div className="section-title">טעינה מרוכזת של משמרות</div>
+            <p className="subtitle wide-copy">
+              מורידים תבנית מוכנה, ממלאים שורות, מעלים קובץ ורואים תצוגה מקדימה לפני שנשמר משהו בבסיס הנתונים.
+            </p>
+          </div>
+          <div className="actions">
+            <button className="secondary" onClick={openTemplateDownload}>הורד תבנית</button>
+            <button onClick={openImportPicker} disabled={importBusy}>{importBusy ? 'טוען…' : 'בחר קובץ Excel'}</button>
+          </div>
+        </div>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          className="visually-hidden"
+          onChange={previewImportFile}
+        />
+
+        <div className="stat-line">
+          <span className="mini-stat">{importFileName ? `קובץ: ${importFileName}` : 'עדיין לא נבחר קובץ'}</span>
+          <span className="mini-stat">פורמט: date, start_time, end_time, title, shift_type, location, notes</span>
+        </div>
+
+        {previewSummary ? (
+          <div className="import-preview-grid">
+            <div className="overview-card">
+              <div className="label">מוכנות לייבוא</div>
+              <div className="overview-value success-text">{previewSummary.ready_rows}</div>
+            </div>
+            <div className="overview-card">
+              <div className="label">שגויות</div>
+              <div className="overview-value danger-text">{previewSummary.invalid_rows}</div>
+            </div>
+            <div className="overview-card">
+              <div className="label">כפילויות</div>
+              <div className="overview-value warning-text">{previewSummary.duplicate_rows}</div>
+            </div>
+            <div className="overview-card">
+              <div className="label">ריקות</div>
+              <div className="overview-value muted-text">{previewSummary.skipped_rows}</div>
+            </div>
+          </div>
+        ) : null}
+
+        {previewSummary ? (
+          <div className="actions">
+            <button onClick={commitImportPreview} disabled={importBusy || !importPreview?.ready_rows?.length || importPreview?.imported}>
+              {importPreview?.imported ? 'ייבוא בוצע' : 'אשר ייבוא'}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => {
+                setImportPreview(null)
+                setImportFileName('')
+              }}
+              disabled={importBusy}
+            >
+              נקה תצוגה
+            </button>
+          </div>
+        ) : null}
+
+        {previewSummary ? (
+          <div className="import-detail-grid">
+            <div className="note-box">
+              <div className="label">{importPreview?.imported ? 'שורות שנוספו' : 'שורות שייובאו'}</div>
+              {renderImportRows(importPreview.ready_rows, 'אין שורות תקינות כרגע.', 'success')}
+            </div>
+            <div className="note-box">
+              <div className="label">שורות עם שגיאות</div>
+              {renderImportRows(importPreview.invalid_rows, 'אין שורות שגויות.', 'danger')}
+            </div>
+            <div className="note-box">
+              <div className="label">שורות שנדחו בגלל כפילות</div>
+              {renderImportRows(importPreview.duplicate_rows, 'לא נמצאו כפילויות.', 'warning')}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="note-box">
+          <div className="label">לוג ייבואים אחרון</div>
+          {renderImportRuns()}
+        </div>
+      </section>
+    )
+  }
+
   function renderUserShiftCard(shift) {
     const liveMeta = getLiveStateMeta(shift.liveTiming)
     const hasResponse = shift.status && shift.status !== 'pending'
     const showReplacement = shift.liveTiming.isActive && shift.replacement_people?.length
+    const metaLine = getShiftMetaLine(shift)
 
     return (
       <div key={shift.id} className="list-item shift-card">
@@ -992,6 +1300,7 @@ export default function App() {
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
             <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
           </div>
           <div className="status-cluster">
             <span className={`badge ${liveMeta.tone}`}>{liveMeta.label}</span>
@@ -1374,6 +1683,12 @@ export default function App() {
                       <div className="label">טווח שעות</div>
                       <div className="info-value">{focusShift.start_time} - {focusShift.end_time}</div>
                     </div>
+                    {getShiftMetaLine(focusShift) ? (
+                      <div className="info-tile">
+                        <div className="label">סוג / מיקום</div>
+                        <div className="info-value">{getShiftMetaLine(focusShift)}</div>
+                      </div>
+                    ) : null}
                     <div className="info-tile">
                       <div className="label">סטטוס תגובה</div>
                       <div className="info-value">
@@ -1480,7 +1795,7 @@ export default function App() {
                 <div className="eyebrow">כניסת מנהל</div>
                 <div className="page-title">יומן משמרות</div>
                 <p className="admin-header-copy">
-                  לחץ על יום בלוח כדי לפתוח חלון פעולות, ליצור משמרת חדשה ולטפל במה שדורש מענה.
+                  לחץ על יום בלוח כדי לפתוח חלון פעולות, ליצור משמרת חדשה, או לייבא הרבה משמרות בבת אחת דרך Excel בלי לאבד את הנתונים הקיימים.
                 </p>
               </div>
               <div className="actions admin-header-actions">
@@ -1508,6 +1823,8 @@ export default function App() {
               </div>
             </div>
           </section>
+
+          {renderImportSection()}
 
           <section className="card admin-calendar-card">
             <div className="calendar-toolbar">
@@ -1739,6 +2056,25 @@ export default function App() {
                     </div>
                   </div>
 
+                  <div className="modal-grid">
+                    <div>
+                      <div className="label">סוג משמרת</div>
+                      <input
+                        value={newShift.shift_type}
+                        onChange={(event) => setNewShift({ ...newShift, shift_type: event.target.value })}
+                        placeholder="למשל: אבטחה / חמ״ל / בוקר"
+                      />
+                    </div>
+                    <div>
+                      <div className="label">מיקום</div>
+                      <input
+                        value={newShift.location}
+                        onChange={(event) => setNewShift({ ...newShift, location: event.target.value })}
+                        placeholder="למשל: בסיס דרום / חדר בקרה"
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <div className="label">הערות</div>
                     <textarea
@@ -1799,6 +2135,23 @@ export default function App() {
                         type="time"
                         value={editShift.end_time}
                         onChange={(event) => setEditShift({ ...editShift, end_time: event.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-grid">
+                    <div>
+                      <div className="label">סוג משמרת</div>
+                      <input
+                        value={editShift.shift_type}
+                        onChange={(event) => setEditShift({ ...editShift, shift_type: event.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <div className="label">מיקום</div>
+                      <input
+                        value={editShift.location}
+                        onChange={(event) => setEditShift({ ...editShift, location: event.target.value })}
                       />
                     </div>
                   </div>

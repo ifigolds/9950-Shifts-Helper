@@ -9,12 +9,40 @@ const schemaPath = path.join(__dirname, 'db', 'schema.sql');
 const backupDir = process.env.DB_BACKUP_DIR || path.join(dbDir, 'backups');
 const maxBackupFiles = Number(process.env.DB_BACKUP_LIMIT || 14);
 const backupThrottleMs = Number(process.env.DB_BACKUP_THROTTLE_MS || 5 * 60 * 1000);
-
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-fs.mkdirSync(backupDir, { recursive: true });
+const allowEphemeralDb = String(process.env.ALLOW_EPHEMERAL_DB || '').toLowerCase() === 'true';
 
 let lastBackupAt = 0;
 let pendingBackupTimer = null;
+
+function isPersistentStoragePath(targetPath) {
+  const normalizedPath = path.resolve(targetPath).replace(/\\/g, '/');
+  return normalizedPath.startsWith('/var/data/');
+}
+
+function assertDurableStorageOrThrow() {
+  if (!process.env.RENDER || allowEphemeralDb) {
+    return;
+  }
+
+  const dbIsPersistent = isPersistentStoragePath(dbPath);
+  const backupIsPersistent = isPersistentStoragePath(backupDir);
+
+  if (dbIsPersistent && backupIsPersistent) {
+    return;
+  }
+
+  throw new Error(
+    'Render persistent storage is not configured for SQLite. ' +
+    'Set DB_STORAGE_DIR and DB_BACKUP_DIR to a persistent disk path under /var/data before deploying. ' +
+    'Override only intentionally with ALLOW_EPHEMERAL_DB=true. ' +
+    'Docs: https://render.com/docs/disks'
+  );
+}
+
+assertDurableStorageOrThrow();
+
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+fs.mkdirSync(backupDir, { recursive: true });
 
 function formatBackupStamp(date = new Date()) {
   const year = date.getFullYear();
@@ -101,65 +129,165 @@ function scheduleDbBackup(reason = 'write') {
   }, waitMs);
 }
 
-function logStorageWarning() {
-  if (!process.env.RENDER) {
-    return;
-  }
+function logStorageStatus() {
+  const storageMode = process.env.RENDER
+    ? (allowEphemeralDb ? 'ephemeral override enabled' : 'persistent disk required')
+    : 'local development';
 
-  const normalizedDbPath = path.resolve(dbPath).replace(/\\/g, '/');
-  const normalizedBackupDir = path.resolve(backupDir).replace(/\\/g, '/');
-  const looksPersistent =
-    normalizedDbPath.startsWith('/var/data/') ||
-    normalizedBackupDir.startsWith('/var/data/');
-
-  if (!looksPersistent) {
-    console.warn(
-      'Render detected without a persistent disk path for SQLite. ' +
-      'Render local storage is ephemeral by default, so attach a persistent disk and set DB_STORAGE_DIR / DB_BACKUP_DIR. ' +
-      'Docs: https://render.com/docs/disks'
-    );
-  }
+  console.log(`Database initialized at ${dbPath}`);
+  console.log(`Database backups directory: ${backupDir}`);
+  console.log(`Database storage mode: ${storageMode}`);
 }
 
-createDbBackup('startup');
-lastBackupAt = Date.now();
-logStorageWarning();
-
 const db = new sqlite3.Database(dbPath);
+
+const migrations = [
+  {
+    id: '2026-04-22-add-users-username-column',
+    statements: [
+      `ALTER TABLE users ADD COLUMN username TEXT`,
+    ],
+  },
+  {
+    id: '2026-04-22-add-shift-metadata-columns',
+    statements: [
+      `ALTER TABLE shifts ADD COLUMN shift_type TEXT NOT NULL DEFAULT ''`,
+      `ALTER TABLE shifts ADD COLUMN location TEXT NOT NULL DEFAULT ''`,
+    ],
+  },
+  {
+    id: '2026-04-22-shifts-unique-import-index',
+    statements: [
+      `CREATE INDEX IF NOT EXISTS idx_shifts_lookup_identity
+       ON shifts (shift_date, start_time, end_time, title, shift_type, location)`,
+    ],
+  },
+  {
+    id: '2026-04-22-create-shift-import-runs',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS shift_import_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_user_id INTEGER NOT NULL,
+        source_filename TEXT,
+        total_rows INTEGER NOT NULL DEFAULT 0,
+        valid_rows INTEGER NOT NULL DEFAULT 0,
+        inserted_rows INTEGER NOT NULL DEFAULT 0,
+        duplicate_rows INTEGER NOT NULL DEFAULT 0,
+        skipped_rows INTEGER NOT NULL DEFAULT 0,
+        invalid_rows INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'preview',
+        details_json TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (admin_user_id) REFERENCES users(id)
+      )`,
+    ],
+  },
+];
+
+function runStatement(statement) {
+  return new Promise((resolve, reject) => {
+    db.run(statement, [], (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
+function isIgnorableMigrationError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('duplicate column name') ||
+    message.includes('already exists')
+  );
+}
+
+function runMigration(migration) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT id FROM schema_migrations WHERE id = ?`,
+      [migration.id],
+      async (selectErr, row) => {
+        if (selectErr) {
+          reject(selectErr);
+          return;
+        }
+
+        if (row) {
+          resolve();
+          return;
+        }
+
+        try {
+          for (const statement of migration.statements) {
+            try {
+              await runStatement(statement);
+            } catch (statementErr) {
+              if (!isIgnorableMigrationError(statementErr)) {
+                throw statementErr;
+              }
+            }
+          }
+
+          await runStatement(
+            `INSERT INTO schema_migrations (id, applied_at) VALUES ('${migration.id}', CURRENT_TIMESTAMP)`
+          );
+
+          resolve();
+        } catch (migrationErr) {
+          reject(migrationErr);
+        }
+      }
+    );
+  });
+}
+
+async function applyMigrations() {
+  await runStatement(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  for (const migration of migrations) {
+    await runMigration(migration);
+  }
+}
 
 function initDb() {
   const schema = fs.readFileSync(schemaPath, 'utf8');
 
-  db.exec(schema, (err) => {
-    if (err) {
-      console.error('DB init error:', err.message);
-      return;
-    }
+  db.serialize(() => {
+    db.exec(schema, async (err) => {
+      if (err) {
+        console.error('DB init error:', err.message);
+        return;
+      }
 
-    db.run(`ALTER TABLE users ADD COLUMN username TEXT`, [], () => {});
-    db.run(`
-      CREATE TABLE IF NOT EXISTS bot_pending_reasons (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        telegram_id TEXT NOT NULL,
-        shift_id INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `, [], () => {});
-    db.run(`
-      CREATE TABLE IF NOT EXISTS shift_notification_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        notification_key TEXT UNIQUE NOT NULL,
-        notification_type TEXT NOT NULL,
-        shift_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        related_shift_id INTEGER,
-        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `, [], () => {});
-
-    console.log(`Database initialized at ${dbPath}`);
-    console.log(`Database backups directory: ${backupDir}`);
+      try {
+        await applyMigrations();
+        createDbBackup('startup');
+        lastBackupAt = Date.now();
+        logStorageStatus();
+      } catch (migrationErr) {
+        console.error('DB migration error:', migrationErr.message);
+        process.exitCode = 1;
+        throw migrationErr;
+      }
+    });
   });
 }
 
-module.exports = { db, initDb, createDbBackup, scheduleDbBackup, dbPath, backupDir };
+module.exports = {
+  db,
+  initDb,
+  createDbBackup,
+  scheduleDbBackup,
+  dbPath,
+  backupDir,
+  isPersistentStoragePath,
+};

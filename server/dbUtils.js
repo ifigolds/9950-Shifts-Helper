@@ -1,11 +1,13 @@
 const { db, scheduleDbBackup } = require('./database');
 
-function run(sql, params = []) {
+function run(sql, params = [], options = {}) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
       if (err) reject(err);
       else {
-        scheduleDbBackup('write');
+        if (!options.skipBackup) {
+          scheduleDbBackup('write');
+        }
         resolve(this);
       }
     });
@@ -30,4 +32,22 @@ function all(sql, params = []) {
   });
 }
 
-module.exports = { run, get, all };
+async function withTransaction(work) {
+  await run('BEGIN IMMEDIATE TRANSACTION', [], { skipBackup: true });
+
+  try {
+    const result = await work();
+    await run('COMMIT', [], { skipBackup: true });
+    return result;
+  } catch (err) {
+    try {
+      await run('ROLLBACK', [], { skipBackup: true });
+    } catch (rollbackErr) {
+      console.error('Transaction rollback error:', rollbackErr.message);
+    }
+
+    throw err;
+  }
+}
+
+module.exports = { run, get, all, withTransaction };

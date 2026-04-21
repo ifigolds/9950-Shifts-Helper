@@ -21,8 +21,8 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(bodyParser.json());
-app.use(express.json());
+app.use(bodyParser.json({ limit: '6mb' }));
+app.use(express.json({ limit: '6mb' }));
 
 initDb();
 

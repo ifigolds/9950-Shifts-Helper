@@ -2,9 +2,10 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth');
 const adminMiddleware = require('../middleware/admin');
-const { run: runAsync, get: getAsync, all: allAsync } = require('../dbUtils');
+const { run: runAsync, get: getAsync, all: allAsync, withTransaction } = require('../dbUtils');
 const { bot } = require('../bot');
 const { getShiftBounds } = require('../shiftTiming');
+const { buildImportPreview, validateShiftPayload } = require('../shiftImport');
 const {
   ISRAEL_TIMEZONE,
   getIsraelDateKey,
@@ -46,6 +47,113 @@ function rangesOverlap(firstRange, secondRange) {
 
 function buildConflictLabel(shift) {
   return `${shift.title} · ${shift.shift_date} · ${shift.start_time}-${shift.end_time}`;
+}
+
+async function findDuplicateShift(normalizedShift, excludeShiftId = null) {
+  const params = [
+    normalizedShift.shift_date,
+    normalizedShift.start_time,
+    normalizedShift.end_time,
+    normalizedShift.title,
+    normalizedShift.shift_type || '',
+    normalizedShift.location || '',
+  ];
+
+  let sql = `
+    SELECT id, title, shift_date, start_time, end_time, shift_type, location
+    FROM shifts
+    WHERE shift_date = ?
+      AND start_time = ?
+      AND end_time = ?
+      AND title = ?
+      AND shift_type = ?
+      AND location = ?
+  `;
+
+  if (excludeShiftId) {
+    sql += ` AND id != ?`;
+    params.push(excludeShiftId);
+  }
+
+  return getAsync(sql, params);
+}
+
+function mapShiftPayload(body) {
+  return {
+    title: body?.title,
+    shift_date: body?.shift_date,
+    start_time: body?.start_time,
+    end_time: body?.end_time,
+    shift_type: body?.shift_type || '',
+    location: body?.location || '',
+    notes: body?.notes || '',
+  };
+}
+
+async function validateShiftRequestOrThrow(body, excludeShiftId = null) {
+  const payload = mapShiftPayload(body);
+  const validation = validateShiftPayload(payload);
+
+  if (validation.errors.length) {
+    const error = new Error(validation.errors.join(' · '));
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const duplicate = await findDuplicateShift(validation.normalized, excludeShiftId);
+  if (duplicate) {
+    const error = new Error('כבר קיימת משמרת זהה במערכת');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return {
+    ...validation.normalized,
+    notes: String(payload.notes || '').trim(),
+  };
+}
+
+async function createShiftImportRun(adminUserId, payload) {
+  const details = payload.details || {};
+  const compactDetails = {
+    ready_rows: (details.ready_rows || []).slice(0, 20),
+    inserted_rows: (details.inserted_rows || []).slice(0, 20),
+    invalid_rows: (details.invalid_rows || []).slice(0, 20),
+    duplicate_rows: (details.duplicate_rows || []).slice(0, 20),
+    skipped_rows: (details.skipped_rows || []).slice(0, 20),
+  };
+
+  const result = await runAsync(
+    `
+    INSERT INTO shift_import_runs (
+      admin_user_id,
+      source_filename,
+      total_rows,
+      valid_rows,
+      inserted_rows,
+      duplicate_rows,
+      skipped_rows,
+      invalid_rows,
+      status,
+      details_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      adminUserId,
+      payload.source_filename || '',
+      payload.total_rows || 0,
+      payload.valid_rows || 0,
+      payload.inserted_rows || 0,
+      payload.duplicate_rows || 0,
+      payload.skipped_rows || 0,
+      payload.invalid_rows || 0,
+      payload.status || 'preview',
+      JSON.stringify(compactDetails),
+    ]
+  );
+
+  return result.lastID;
 }
 
 async function getShiftOrThrow(shiftId) {
@@ -240,6 +348,8 @@ router.get('/shifts', authMiddleware, adminMiddleware, async (req, res) => {
         s.shift_date,
         s.start_time,
         s.end_time,
+        s.shift_type,
+        s.location,
         s.notes,
         COUNT(sa.id) as total,
         SUM(CASE WHEN sa.status = 'yes' THEN 1 ELSE 0 END) as yes_count,
@@ -328,56 +438,221 @@ router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+router.get('/shift-import-runs', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const runs = await allAsync(
+      `
+      SELECT
+        sir.id,
+        sir.source_filename,
+        sir.total_rows,
+        sir.valid_rows,
+        sir.inserted_rows,
+        sir.duplicate_rows,
+        sir.skipped_rows,
+        sir.invalid_rows,
+        sir.status,
+        sir.created_at,
+        u.first_name,
+        u.last_name
+      FROM shift_import_runs sir
+      JOIN users u ON u.id = sir.admin_user_id
+      ORDER BY sir.created_at DESC, sir.id DESC
+      LIMIT 10
+      `
+    );
+
+    return res.json({ runs });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/shift-import/preview', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const sourceFilename = String(req.body?.source_filename || '').trim();
+
+    if (!rows.length) {
+      return res.status(400).json({ error: 'לא נמצאו שורות לייבוא' });
+    }
+
+    const preview = await buildImportPreview(rows, allAsync);
+    const runId = await createShiftImportRun(req.dbUser.id, {
+      source_filename: sourceFilename,
+      total_rows: preview.summary.total_rows,
+      valid_rows: preview.summary.ready_rows,
+      inserted_rows: 0,
+      duplicate_rows: preview.summary.duplicate_rows,
+      skipped_rows: preview.summary.skipped_rows,
+      invalid_rows: preview.summary.invalid_rows,
+      status: 'preview',
+      details: {
+        ready_rows: preview.ready_rows,
+        invalid_rows: preview.invalid_rows,
+        duplicate_rows: preview.duplicate_rows,
+        skipped_rows: preview.skipped_rows,
+      },
+    });
+
+    return res.json({
+      run_id: runId,
+      source_filename: sourceFilename,
+      ...preview,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.post('/shift-import/commit', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    const sourceFilename = String(req.body?.source_filename || '').trim();
+
+    if (!rows.length) {
+      return res.status(400).json({ error: 'אין שורות תקינות לייבוא' });
+    }
+
+    const preview = await buildImportPreview(rows, allAsync);
+    const insertedRows = [];
+    const duplicateRows = [...preview.duplicate_rows];
+
+    await withTransaction(async () => {
+      for (const row of preview.ready_rows) {
+        try {
+          const result = await runAsync(
+            `
+            INSERT INTO shifts (title, shift_date, start_time, end_time, shift_type, location, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+              row.title,
+              row.shift_date,
+              row.start_time,
+              row.end_time,
+              row.shift_type || '',
+              row.location || '',
+              row.notes || '',
+            ]
+          );
+
+          insertedRows.push({
+            id: result.lastID,
+            row_number: row.row_number,
+            title: row.title,
+            shift_date: row.shift_date,
+            start_time: row.start_time,
+            end_time: row.end_time,
+            shift_type: row.shift_type || '',
+            location: row.location || '',
+          });
+        } catch (insertErr) {
+          if (String(insertErr.message || '').includes('UNIQUE constraint failed')) {
+            duplicateRows.push({
+              row_number: row.row_number,
+              reason: 'כבר נוספה משמרת זהה לפני סיום הייבוא',
+              row,
+            });
+            continue;
+          }
+
+          throw insertErr;
+        }
+      }
+    });
+
+    const runId = await createShiftImportRun(req.dbUser.id, {
+      source_filename: sourceFilename,
+      total_rows: preview.summary.total_rows,
+      valid_rows: preview.summary.ready_rows,
+      inserted_rows: insertedRows.length,
+      duplicate_rows: duplicateRows.length,
+      skipped_rows: preview.summary.skipped_rows,
+      invalid_rows: preview.summary.invalid_rows,
+      status: insertedRows.length ? 'imported' : 'no_changes',
+      details: {
+        inserted_rows: insertedRows,
+        invalid_rows: preview.invalid_rows,
+        duplicate_rows: duplicateRows,
+        skipped_rows: preview.skipped_rows,
+      },
+    });
+
+    return res.json({
+      run_id: runId,
+      source_filename: sourceFilename,
+      summary: {
+        total_rows: preview.summary.total_rows,
+        inserted_rows: insertedRows.length,
+        duplicate_rows: duplicateRows.length,
+        invalid_rows: preview.summary.invalid_rows,
+        skipped_rows: preview.summary.skipped_rows,
+      },
+      inserted_rows: insertedRows,
+      duplicate_rows: duplicateRows,
+      invalid_rows: preview.invalid_rows,
+      skipped_rows: preview.skipped_rows,
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 router.post('/shifts', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { title, shift_date: shiftDate, start_time: startTime, end_time: endTime, notes } = req.body;
-
-    if (!title || !shiftDate || !startTime || !endTime) {
-      return res.status(400).json({ error: 'חסרים פרטים ליצירת משמרת' });
-    }
+    const normalizedShift = await validateShiftRequestOrThrow(req.body);
 
     const result = await runAsync(
       `
-      INSERT INTO shifts (title, shift_date, start_time, end_time, notes)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO shifts (title, shift_date, start_time, end_time, shift_type, location, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
-      [title, shiftDate, startTime, endTime, notes || '']
+      [
+        normalizedShift.title,
+        normalizedShift.shift_date,
+        normalizedShift.start_time,
+        normalizedShift.end_time,
+        normalizedShift.shift_type,
+        normalizedShift.location,
+        normalizedShift.notes,
+      ]
     );
 
     return res.json({ success: true, shift_id: result.lastID });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(err.statusCode || 500).json({ error: err.message });
   }
 });
 
 router.put('/shifts/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const shiftId = req.params.id;
-    const { title, shift_date: shiftDate, start_time: startTime, end_time: endTime, notes } = req.body;
-
-    if (!title || !shiftDate || !startTime || !endTime) {
-      return res.status(400).json({ error: 'חסרים פרטים לעדכון משמרת' });
-    }
-
+    const normalizedShift = await validateShiftRequestOrThrow(req.body, shiftId);
     const oldShift = await getShiftOrThrow(shiftId);
 
     const updatedShift = {
       ...oldShift,
       id: Number(shiftId),
-      title,
-      shift_date: shiftDate,
-      start_time: startTime,
-      end_time: endTime,
-      notes: notes || ''
+      ...normalizedShift,
     };
 
     await runAsync(
       `
       UPDATE shifts
-      SET title = ?, shift_date = ?, start_time = ?, end_time = ?, notes = ?
+      SET title = ?, shift_date = ?, start_time = ?, end_time = ?, shift_type = ?, location = ?, notes = ?
       WHERE id = ?
       `,
-      [title, shiftDate, startTime, endTime, notes || '', shiftId]
+      [
+        normalizedShift.title,
+        normalizedShift.shift_date,
+        normalizedShift.start_time,
+        normalizedShift.end_time,
+        normalizedShift.shift_type,
+        normalizedShift.location,
+        normalizedShift.notes,
+        shiftId,
+      ]
     );
 
     const users = await allAsync(

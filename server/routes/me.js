@@ -196,6 +196,8 @@ async function getEnrichedUserShifts(userId) {
       s.shift_date,
       s.start_time,
       s.end_time,
+      s.shift_type,
+      s.location,
       s.notes
     FROM shift_assignments sa
     JOIN shifts s ON s.id = sa.shift_id
@@ -211,7 +213,7 @@ async function getEnrichedUserShifts(userId) {
 
   const allShifts = await all(
     `
-    SELECT id, title, shift_date, start_time, end_time
+    SELECT id, title, shift_date, start_time, end_time, shift_type, location
     FROM shifts
     ORDER BY shift_date ASC, start_time ASC, id ASC
     `
@@ -251,6 +253,8 @@ async function getEnrichedUserShifts(userId) {
             shift_date: nextShift.shift_date,
             start_time: nextShift.start_time,
             end_time: nextShift.end_time,
+            shift_type: nextShift.shift_type,
+            location: nextShift.location,
           }
         : null,
       replacement_people: replacementPeople,
@@ -414,6 +418,8 @@ router.post('/shift-response', authMiddleware, async (req, res) => {
         s.shift_date,
         s.start_time,
         s.end_time,
+        s.shift_type,
+        s.location,
         s.notes
       FROM shift_assignments sa
       JOIN shifts s ON s.id = sa.shift_id

@@ -11,6 +11,11 @@ const BOT_TEXT = {
     button: 'שליחת תודה',
     previewLabel: 'נוסח ההודעה:',
   },
+  importTemplate: {
+    adminOnly: 'פקודה זו זמינה למנהלים בלבד.',
+    prompt: 'להורדת תבנית ה-Excel לייבוא משמרות לחץ על הכפתור:',
+    button: 'הורדת תבנית Excel',
+  },
 };
 
 function getHelpText() {
@@ -23,6 +28,7 @@ function getHelpText() {
     '/start - פתיחה מחדש של הבוט והתפריט הראשי.',
     '/help - הסבר מלא על יכולות הבוט והמערכת.',
     '/thanks - פתיחת הודעת תודה מוכנה עבור @igoldfarb.',
+    '/template - הורדת תבנית Excel לייבוא משמרות (למנהלים).',
     '/addadmin TELEGRAM_ID - הענקת הרשאת מנהל.',
     '/removeadmin TELEGRAM_ID - הסרת הרשאת מנהל.',
     '',

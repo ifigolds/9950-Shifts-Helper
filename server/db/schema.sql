@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS shifts (
     shift_date TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
+    shift_type TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
     notes TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -62,4 +64,20 @@ CREATE TABLE IF NOT EXISTS shift_notification_log (
     user_id INTEGER NOT NULL,
     related_shift_id INTEGER,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shift_import_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    admin_user_id INTEGER NOT NULL,
+    source_filename TEXT,
+    total_rows INTEGER NOT NULL DEFAULT 0,
+    valid_rows INTEGER NOT NULL DEFAULT 0,
+    inserted_rows INTEGER NOT NULL DEFAULT 0,
+    duplicate_rows INTEGER NOT NULL DEFAULT 0,
+    skipped_rows INTEGER NOT NULL DEFAULT 0,
+    invalid_rows INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'preview',
+    details_json TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_user_id) REFERENCES users(id)
 );
