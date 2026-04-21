@@ -5,6 +5,7 @@ const LOGO_SRC = '/logo-9950.png'
 const MIN_BOOT_MS = 1400
 const ISRAEL_TIMEZONE = 'Asia/Jerusalem'
 const WEEKDAYS = ['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳']
+const BUILD_ID = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'local build'
 
 function statusText(status) {
   if (status === 'yes') return 'מגיע'
@@ -277,7 +278,7 @@ function StatusScreen({ title, text }) {
 function AppFooter() {
   return (
     <div className="app-footer">
-      <span>version 1.2</span>
+      <span>build {BUILD_ID}</span>
       <span>Israel timezone active</span>
     </div>
   )
