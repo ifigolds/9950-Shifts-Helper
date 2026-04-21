@@ -8,9 +8,13 @@ const dbPath = process.env.DB_PATH || path.join(dbDir, 'app.db');
 const schemaPath = path.join(__dirname, 'db', 'schema.sql');
 const backupDir = process.env.DB_BACKUP_DIR || path.join(dbDir, 'backups');
 const maxBackupFiles = Number(process.env.DB_BACKUP_LIMIT || 14);
+const backupThrottleMs = Number(process.env.DB_BACKUP_THROTTLE_MS || 5 * 60 * 1000);
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 fs.mkdirSync(backupDir, { recursive: true });
+
+let lastBackupAt = 0;
+let pendingBackupTimer = null;
 
 function formatBackupStamp(date = new Date()) {
   const year = date.getFullYear();
@@ -62,7 +66,64 @@ function createDbBackup(reason = 'manual') {
   return backupPath;
 }
 
+function runBackupNow(reason = 'write') {
+  try {
+    const backupPath = createDbBackup(reason);
+
+    if (backupPath) {
+      lastBackupAt = Date.now();
+      console.log(`Database backup created: ${backupPath}`);
+    }
+  } catch (err) {
+    console.error('Database backup error:', err.message);
+  }
+}
+
+function scheduleDbBackup(reason = 'write') {
+  if (!fs.existsSync(dbPath)) {
+    return;
+  }
+
+  const elapsed = Date.now() - lastBackupAt;
+  if (elapsed >= backupThrottleMs) {
+    runBackupNow(reason);
+    return;
+  }
+
+  if (pendingBackupTimer) {
+    return;
+  }
+
+  const waitMs = Math.max(1000, backupThrottleMs - elapsed);
+  pendingBackupTimer = setTimeout(() => {
+    pendingBackupTimer = null;
+    runBackupNow(reason);
+  }, waitMs);
+}
+
+function logStorageWarning() {
+  if (!process.env.RENDER) {
+    return;
+  }
+
+  const normalizedDbPath = path.resolve(dbPath).replace(/\\/g, '/');
+  const normalizedBackupDir = path.resolve(backupDir).replace(/\\/g, '/');
+  const looksPersistent =
+    normalizedDbPath.startsWith('/var/data/') ||
+    normalizedBackupDir.startsWith('/var/data/');
+
+  if (!looksPersistent) {
+    console.warn(
+      'Render detected without a persistent disk path for SQLite. ' +
+      'Render local storage is ephemeral by default, so attach a persistent disk and set DB_STORAGE_DIR / DB_BACKUP_DIR. ' +
+      'Docs: https://render.com/docs/disks'
+    );
+  }
+}
+
 createDbBackup('startup');
+lastBackupAt = Date.now();
+logStorageWarning();
 
 const db = new sqlite3.Database(dbPath);
 
@@ -101,4 +162,4 @@ function initDb() {
   });
 }
 
-module.exports = { db, initDb, createDbBackup, dbPath, backupDir };
+module.exports = { db, initDb, createDbBackup, scheduleDbBackup, dbPath, backupDir };

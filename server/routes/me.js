@@ -158,6 +158,8 @@ async function getEnrichedUserShifts(userId) {
 
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
+    const now = new Date();
+
     if (!req.dbUser) {
       return res.json({
         registered: false
@@ -172,8 +174,9 @@ router.get('/profile', authMiddleware, async (req, res) => {
       stats,
       timezone: ISRAEL_TIMEZONE,
       now: {
-        date_key: getIsraelDateKey(),
-        label: getIsraelDateTimeLabel(),
+        iso: now.toISOString(),
+        date_key: getIsraelDateKey(now),
+        label: getIsraelDateTimeLabel(now),
       },
     });
   } catch (err) {
@@ -183,6 +186,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
 
 router.get('/shifts', authMiddleware, async (req, res) => {
   try {
+    const now = new Date();
+
     if (!req.dbUser) {
       return res.status(404).json({ error: 'המשתמש לא נמצא' });
     }
@@ -197,8 +202,9 @@ router.get('/shifts', authMiddleware, async (req, res) => {
       shifts,
       timezone: ISRAEL_TIMEZONE,
       now: {
-        date_key: getIsraelDateKey(),
-        label: getIsraelDateTimeLabel(),
+        iso: now.toISOString(),
+        date_key: getIsraelDateKey(now),
+        label: getIsraelDateTimeLabel(now),
       },
     });
   } catch (err) {
@@ -208,6 +214,8 @@ router.get('/shifts', authMiddleware, async (req, res) => {
 
 router.get('/next-shift', authMiddleware, async (req, res) => {
   try {
+    const now = new Date();
+
     if (!req.dbUser) {
       return res.status(404).json({ error: 'המשתמש לא נמצא' });
     }
@@ -217,7 +225,6 @@ router.get('/next-shift', authMiddleware, async (req, res) => {
     }
 
     const shifts = await getEnrichedUserShifts(req.dbUser.id);
-    const now = new Date();
     const nextShift = shifts.find((shift) => getShiftBounds(shift).end > now) || shifts[0] || null;
 
     const activeShift = shifts.find((shift) => shift.is_active) || null;
@@ -227,8 +234,9 @@ router.get('/next-shift', authMiddleware, async (req, res) => {
       active_shift: activeShift,
       timezone: ISRAEL_TIMEZONE,
       now: {
-        date_key: getIsraelDateKey(),
-        label: getIsraelDateTimeLabel(),
+        iso: now.toISOString(),
+        date_key: getIsraelDateKey(now),
+        label: getIsraelDateTimeLabel(now),
       },
     });
   } catch (err) {

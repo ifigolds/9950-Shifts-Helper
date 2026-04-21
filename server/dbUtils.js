@@ -1,10 +1,13 @@
-const { db } = require('./database');
+const { db, scheduleDbBackup } = require('./database');
 
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
       if (err) reject(err);
-      else resolve(this);
+      else {
+        scheduleDbBackup('write');
+        resolve(this);
+      }
     });
   });
 }

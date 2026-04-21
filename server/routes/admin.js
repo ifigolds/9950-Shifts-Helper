@@ -6,6 +6,11 @@ const { run: runAsync, get: getAsync, all: allAsync } = require('../dbUtils');
 const { bot } = require('../bot');
 const { getShiftBounds } = require('../shiftTiming');
 const {
+  ISRAEL_TIMEZONE,
+  getIsraelDateKey,
+  getIsraelDateTimeLabel,
+} = require('../timezone');
+const {
   buildAssignedShiftNotification,
   buildUpdatedShiftNotification,
   buildDeletedShiftNotification
@@ -226,6 +231,7 @@ async function getProblemPeopleSummary(shiftId) {
 
 router.get('/shifts', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    const now = new Date();
     const shifts = await allAsync(
       `
       SELECT
@@ -254,7 +260,15 @@ router.get('/shifts', authMiddleware, adminMiddleware, async (req, res) => {
       }))
     );
 
-    return res.json({ shifts: shiftsWithProblems });
+    return res.json({
+      shifts: shiftsWithProblems,
+      timezone: ISRAEL_TIMEZONE,
+      now: {
+        iso: now.toISOString(),
+        date_key: getIsraelDateKey(now),
+        label: getIsraelDateTimeLabel(now),
+      },
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
