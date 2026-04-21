@@ -820,4 +820,53 @@ router.post('/restore-known-users', authMiddleware, adminMiddleware, async (req,
   }
 });
 
+router.post('/profile', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const firstName = String(req.body?.first_name || '').trim();
+    const lastName = String(req.body?.last_name || '').trim();
+    const phone = String(req.body?.phone || '').trim();
+
+    if (!firstName || !lastName || !phone) {
+      return res.status(400).json({ error: 'יש למלא שם פרטי, שם משפחה וטלפון' });
+    }
+
+    await runAsync(
+      `
+      UPDATE users
+      SET first_name = ?, last_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+      `,
+      [firstName, lastName, phone, req.dbUser.id]
+    );
+
+    const updatedUser = await getAsync(
+      `
+      SELECT
+        id,
+        telegram_id,
+        username,
+        first_name,
+        last_name,
+        phone,
+        rank,
+        service_type,
+        role,
+        registration_status,
+        created_at,
+        updated_at
+      FROM users
+      WHERE id = ?
+      `,
+      [req.dbUser.id]
+    );
+
+    return res.json({
+      success: true,
+      user: updatedUser,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
