@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { parseShiftImportWorkbook } from './importWorkbook'
 
 const FALLBACK_API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-9950.png'
@@ -969,22 +970,16 @@ export default function App() {
         cellDates: true,
       })
 
-      const firstSheetName = workbook.SheetNames?.[0]
-      if (!firstSheetName) {
+      if (!workbook.SheetNames?.length) {
         throw new Error('לא נמצאה לשונית בקובץ ה-Excel')
       }
 
-      const sheet = workbook.Sheets[firstSheetName]
-      const parsedRows = window.XLSX.utils.sheet_to_json(sheet, {
-        defval: '',
-        raw: false,
-        dateNF: 'yyyy-mm-dd',
-      })
+      const parsedImport = parseShiftImportWorkbook(window.XLSX, workbook)
+      const rowsWithNumbers = parsedImport.rows
 
-      const rowsWithNumbers = parsedRows.map((row, index) => ({
-        ...row,
-        _rowNumber: index + 2,
-      }))
+      if (!rowsWithNumbers.length) {
+        throw new Error('לא נמצאו שורות משמרת לייבוא בגיליון שנבחר')
+      }
 
       const preview = await api('/admin/shift-import/preview', {
         method: 'POST',
