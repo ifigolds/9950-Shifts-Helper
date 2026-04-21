@@ -292,6 +292,8 @@ export default function App() {
   const [, setTick] = useState(0)
 
   const [userShifts, setUserShifts] = useState([])
+  const [leaderboard, setLeaderboard] = useState([])
+  const [currentLeaderboardUser, setCurrentLeaderboardUser] = useState(null)
   const [noReason, setNoReason] = useState('')
 
   const [adminShifts, setAdminShifts] = useState([])
@@ -319,6 +321,34 @@ export default function App() {
 
     return () => {
       window.clearInterval(intervalId)
+    }
+  }, [])
+
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp
+
+    function applyViewportVars() {
+      const viewportHeight = tg?.viewportHeight ? `${tg.viewportHeight}px` : '100svh'
+      const stableHeight = tg?.viewportStableHeight ? `${tg.viewportStableHeight}px` : viewportHeight
+
+      document.documentElement.style.setProperty('--tg-viewport-height', viewportHeight)
+      document.documentElement.style.setProperty('--tg-stable-height', stableHeight)
+    }
+
+    applyViewportVars()
+
+    if (tg && typeof tg.onEvent === 'function') {
+      tg.onEvent('viewportChanged', applyViewportVars)
+    }
+
+    window.addEventListener('resize', applyViewportVars)
+
+    return () => {
+      if (tg && typeof tg.offEvent === 'function') {
+        tg.offEvent('viewportChanged', applyViewportVars)
+      }
+
+      window.removeEventListener('resize', applyViewportVars)
     }
   }, [])
 
@@ -437,6 +467,13 @@ export default function App() {
     const data = await api('/me/shifts')
     setUserShifts(data.shifts || [])
     syncServerNow(data?.now?.iso || data?.shifts?.[0]?.timing?.now_iso)
+  }
+
+  async function loadLeaderboard() {
+    const data = await api('/me/leaderboard')
+    setLeaderboard(data.leaderboard || [])
+    setCurrentLeaderboardUser(data.current_user || null)
+    syncServerNow(data?.now?.iso)
   }
 
   async function loadAdminShifts() {
@@ -586,7 +623,7 @@ export default function App() {
     try {
       setError('')
       setOverlay(null)
-      await loadUserShifts()
+      await Promise.all([loadUserShifts(), loadLeaderboard()])
       setMode('user')
     } catch (err) {
       setError(err.message || 'שגיאה בטעינת אזור אישי')
@@ -633,7 +670,7 @@ export default function App() {
 
       setNoReason('')
       setOverlay(null)
-      await loadUserShifts()
+      await Promise.all([loadUserShifts(), loadLeaderboard()])
     } catch (err) {
       setError(err.message || 'שגיאה בעדכון התגובה למשמרת')
     }
@@ -1092,6 +1129,33 @@ export default function App() {
     )
   }
 
+  function renderLeaderboardRow(entry, highlight = false) {
+    const medalTone =
+      entry.rank === 1 ? 'success' :
+      entry.rank === 2 ? 'warning' :
+      entry.rank === 3 ? 'pending' :
+      'pending'
+
+    return (
+      <div
+        key={`leaderboard-${entry.user_id}-${highlight ? 'highlight' : 'normal'}`}
+        className={`leaderboard-row ${highlight ? 'leaderboard-row-highlight' : ''}`}
+      >
+        <div className="leaderboard-rank">
+          <span className={`badge ${medalTone}`}>#{entry.rank}</span>
+        </div>
+        <div className="leaderboard-main">
+          <div className="list-main">{personName(entry)}</div>
+          <div className="list-sub">{entry.completed_shifts} משמרות שהושלמו</div>
+        </div>
+        <div className="leaderboard-hours">
+          <strong>{formatHoursLabel(entry.completed_hours)}</strong>
+          <span>שעות</span>
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return <LoadingScreen />
   }
@@ -1335,6 +1399,46 @@ export default function App() {
               <div className="empty-state panel-empty">
                 <div className="section-title">עדיין אין היסטוריית משמרות</div>
                 <p className="subtitle">ברגע שתשובץ למשמרת, היא תופיע כאן יחד עם הסטטוס והזמנים שלה.</p>
+              </div>
+            )}
+          </section>
+
+          <section className="surface leaderboard-surface">
+            <div className="section-head">
+              <div>
+                <div className="eyebrow">דירוג עולמי</div>
+                <div className="section-title">טופ שעות של כל האנשים במערכת</div>
+              </div>
+              <span className="meta-pill">{leaderboard.length} משתתפים</span>
+            </div>
+
+            {currentLeaderboardUser ? (
+              <div className="leaderboard-hero">
+                <div>
+                  <div className="label">המיקום שלך</div>
+                  <div className="leaderboard-self-rank">#{currentLeaderboardUser.rank}</div>
+                </div>
+                <div className="leaderboard-self-copy">
+                  <div className="list-main">{personName(currentLeaderboardUser)}</div>
+                  <div className="list-sub">
+                    {formatHoursLabel(currentLeaderboardUser.completed_hours)} שעות · {currentLeaderboardUser.completed_shifts} משמרות
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {leaderboard.length ? (
+              <div className="leaderboard-list">
+                {leaderboard.slice(0, 3).map((entry) => renderLeaderboardRow(entry))}
+                {leaderboard.length > 3 ? (
+                  <div className="leaderboard-divider">המשך הדירוג</div>
+                ) : null}
+                {leaderboard.slice(3).map((entry) => renderLeaderboardRow(entry, entry.is_current_user))}
+              </div>
+            ) : (
+              <div className="empty-state panel-empty">
+                <div className="section-title">עדיין אין דירוג</div>
+                <p className="subtitle">הדירוג יתמלא אוטומטית אחרי שיושלמו משמרות במערכת.</p>
               </div>
             )}
           </section>

@@ -1,4 +1,10 @@
 :root {
+  --tg-viewport-height: 100svh;
+  --tg-stable-height: 100svh;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
   --bg:
     radial-gradient(circle at top right, rgba(22, 163, 74, 0.12), transparent 24%),
     radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.12), transparent 26%),
@@ -39,7 +45,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
+  min-height: var(--tg-stable-height);
   direction: rtl;
   font-family: "Segoe UI", Tahoma, sans-serif;
   color: var(--text);
@@ -47,7 +53,11 @@ body {
 }
 
 body {
-  padding: 18px 14px 28px;
+  padding:
+    calc(18px + var(--safe-top))
+    calc(14px + var(--safe-right))
+    calc(28px + var(--safe-bottom))
+    calc(14px + var(--safe-left));
   overflow-x: hidden;
 }
 
@@ -172,7 +182,7 @@ code {
   z-index: 1;
   max-width: 980px;
   margin: 0 auto;
-  min-height: 100%;
+  min-height: calc(var(--tg-stable-height) - var(--safe-top) - var(--safe-bottom));
 }
 
 .shell,
@@ -180,6 +190,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 100%;
 }
 
 .hero-panel,
@@ -344,6 +355,7 @@ code {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.85fr);
   gap: 16px;
+  align-items: start;
 }
 
 .summary-column {
@@ -470,7 +482,8 @@ code {
 .day-preview-list,
 .overlay-body-stack,
 .modal-fields,
-.checkbox-list {
+.checkbox-list,
+.leaderboard-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -620,6 +633,86 @@ code {
   max-width: 620px;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.leaderboard-surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 255, 0.92));
+}
+
+.leaderboard-hero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(20, 121, 211, 0.16);
+  background: linear-gradient(135deg, rgba(240, 248, 255, 0.96), rgba(255, 255, 255, 0.9));
+  box-shadow: var(--shadow-sm);
+}
+
+.leaderboard-self-rank {
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.leaderboard-self-copy {
+  min-width: 0;
+}
+
+.leaderboard-list {
+  margin-top: 16px;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
+}
+
+.leaderboard-row-highlight {
+  border-color: rgba(20, 121, 211, 0.22);
+  background: linear-gradient(180deg, rgba(241, 248, 255, 0.98), rgba(255, 255, 255, 0.92));
+}
+
+.leaderboard-main {
+  min-width: 0;
+}
+
+.leaderboard-hours {
+  text-align: left;
+}
+
+.leaderboard-hours strong {
+  display: block;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.leaderboard-hours span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.leaderboard-divider {
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
 }
 
 .overview-grid {
@@ -1116,7 +1209,11 @@ code {
 
 @media (max-width: 760px) {
   body {
-    padding: 12px 10px 24px;
+    padding:
+      calc(10px + var(--safe-top))
+      calc(10px + var(--safe-right))
+      calc(22px + var(--safe-bottom))
+      calc(10px + var(--safe-left));
   }
 
   .hero-title,
@@ -1141,6 +1238,24 @@ code {
     flex-direction: column;
   }
 
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    padding: 12px;
+    margin: -2px 0 2px;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  }
+
+  .view-shell {
+    gap: 14px;
+  }
+
   button {
     width: 100%;
   }
@@ -1158,7 +1273,9 @@ code {
   .focus-info-grid,
   .modal-grid,
   .stats-grid,
-  .overview-grid {
+  .overview-grid,
+  .leaderboard-hero,
+  .leaderboard-row {
     grid-template-columns: 1fr;
   }
 
@@ -1168,6 +1285,21 @@ code {
 
   .brand-lockup {
     align-items: flex-start;
+  }
+
+  .hero-panel,
+  .card,
+  .surface {
+    border-radius: 24px;
+  }
+
+  .card,
+  .surface,
+  .hero-panel,
+  .mode-hero,
+  .user-hero,
+  .admin-header-card {
+    padding: 18px;
   }
 
   .calendar-day {
@@ -1182,5 +1314,9 @@ code {
   .overlay-panel {
     padding: 18px;
     border-radius: 24px;
+  }
+
+  .leaderboard-hours {
+    text-align: right;
   }
 }
