@@ -1255,6 +1255,10 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .mode-card-status {
+    min-height: auto;
+  }
+
   .overview-grid,
   .import-preview-grid,
   .import-detail-grid {
@@ -1265,30 +1269,31 @@ code {
 @media (max-width: 760px) {
   body {
     padding:
-      calc(10px + var(--safe-top))
-      calc(10px + var(--safe-right))
-      calc(22px + var(--safe-bottom))
-      calc(10px + var(--safe-left));
+      calc(8px + var(--safe-top))
+      calc(8px + var(--safe-right))
+      calc(18px + var(--safe-bottom))
+      calc(8px + var(--safe-left));
+  }
+
+  #root {
+    max-width: none;
   }
 
   .hero-title,
   .page-title {
-    font-size: 28px;
+    font-size: 29px;
   }
 
   .section-title,
   .overlay-title {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .actions,
   .admin-header-actions,
   .overlay-actions-bar,
   .calendar-toolbar,
-  .hero-meta,
-  .support-strip,
-  .topbar,
-  .app-footer {
+  .support-strip {
     width: 100%;
     flex-direction: column;
   }
@@ -1297,10 +1302,13 @@ code {
     position: sticky;
     top: 0;
     z-index: 12;
-    padding: 12px;
-    margin: -2px 0 2px;
-    border-radius: 22px;
-    background: rgba(255, 255, 255, 0.84);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    padding: 10px 12px;
+    margin: -2px 0 4px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.9);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid rgba(255, 255, 255, 0.72);
@@ -1308,10 +1316,13 @@ code {
   }
 
   .view-shell {
-    gap: 14px;
+    gap: 12px;
   }
 
-  button {
+  .actions button,
+  .admin-header-actions button,
+  .overlay-actions-bar button,
+  .calendar-toolbar button {
     width: 100%;
   }
 
@@ -1326,11 +1337,14 @@ code {
   }
 
   .focus-info-grid,
-  .modal-grid,
   .stats-grid,
   .overview-grid,
   .import-preview-grid,
   .import-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1339,13 +1353,22 @@ code {
   }
 
   .brand-lockup {
-    align-items: flex-start;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand-lockup > div {
+    min-width: 0;
+  }
+
+  .brand-title {
+    font-size: clamp(20px, 6.8vw, 30px);
   }
 
   .hero-panel,
   .card,
   .surface {
-    border-radius: 24px;
+    border-radius: 22px;
   }
 
   .card,
@@ -1354,7 +1377,135 @@ code {
   .mode-hero,
   .user-hero,
   .admin-header-card {
+    padding: 16px;
+  }
+
+  .mode-hero,
+  .user-hero,
+  .admin-header-card {
+    gap: 14px;
+  }
+
+  .mode-hero {
+    padding-top: 18px;
+  }
+
+  .hero-meta {
+    margin-top: 14px;
+    width: calc(100% + 4px);
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .hero-meta::-webkit-scrollbar {
+    display: none;
+  }
+
+  .meta-pill,
+  .mini-stat {
+    flex: 0 0 auto;
+  }
+
+  .mode-grid {
+    gap: 12px;
+  }
+
+  .mode-card {
+    min-height: 156px;
     padding: 18px;
+    border-radius: 20px;
+    gap: 10px;
+  }
+
+  .mode-card strong {
+    font-size: 22px;
+    line-height: 1.12;
+  }
+
+  .mode-card-count {
+    font-size: 17px;
+  }
+
+  .mode-card-list {
+    gap: 8px;
+  }
+
+  .mode-card-list-item {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .mode-card-active-names {
+    font-size: 18px;
+    line-height: 1.35;
+  }
+
+  .dashboard-layout,
+  .summary-column {
+    gap: 12px;
+  }
+
+  .focus-info-grid {
+    margin-top: 14px;
+  }
+
+  .info-tile,
+  .stat-tile,
+  .overview-card {
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .info-value,
+  .stat-tile strong,
+  .overview-value,
+  .metric-value {
+    margin-top: 6px;
+    font-size: 22px;
+  }
+
+  .timeline-list,
+  .day-preview-list,
+  .overlay-body-stack,
+  .checkbox-list {
+    gap: 10px;
+  }
+
+  .timeline-list {
+    margin-top: 14px;
+  }
+
+  .timeline-card,
+  .list-item {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .status-cluster {
+    gap: 8px;
+  }
+
+  .badge {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+    width: 100%;
+    margin-top: 0;
+  }
+
+  .topbar-actions button {
+    width: auto;
+    min-height: 42px;
+    padding-inline: 12px;
   }
 
   .calendar-day {
@@ -1369,5 +1520,77 @@ code {
   .overlay-panel {
     padding: 18px;
     border-radius: 24px;
+  }
+
+  .app-footer {
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    padding:
+      calc(6px + var(--safe-top))
+      calc(6px + var(--safe-right))
+      calc(16px + var(--safe-bottom))
+      calc(6px + var(--safe-left));
+  }
+
+  .page-title {
+    font-size: 27px;
+  }
+
+  .section-title,
+  .overlay-title {
+    font-size: 20px;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 10px;
+  }
+
+  .topbar-actions {
+    grid-auto-flow: row;
+    grid-template-columns: 1fr;
+  }
+
+  .focus-info-grid,
+  .stats-grid,
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mode-card {
+    min-height: 148px;
+    padding: 16px;
+  }
+
+  .mode-card strong {
+    font-size: 21px;
+  }
+
+  .mode-card-active-names {
+    font-size: 17px;
+  }
+
+  .brand-logo {
+    width: 72px;
+  }
+
+  .brand-lockup.compact .brand-logo {
+    width: 46px;
+  }
+
+  .hero-panel,
+  .card,
+  .surface,
+  .overlay-panel {
+    border-radius: 20px;
   }
 }
