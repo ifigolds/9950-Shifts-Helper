@@ -357,6 +357,8 @@ export default function App() {
 
   const [adminShifts, setAdminShifts] = useState([])
   const [importRuns, setImportRuns] = useState([])
+  const [adminLoading, setAdminLoading] = useState(false)
+  const [adminNotice, setAdminNotice] = useState('')
   const [importPreview, setImportPreview] = useState(null)
   const [importFileName, setImportFileName] = useState('')
   const [importBusy, setImportBusy] = useState(false)
@@ -615,6 +617,29 @@ export default function App() {
     setImportRuns(data.runs || [])
   }
 
+  async function hydrateAdminData() {
+    setAdminLoading(true)
+    setAdminNotice('')
+
+    try {
+      const [shiftsResult, importRunsResult] = await Promise.allSettled([
+        loadAdminShifts(),
+        loadImportRuns(),
+      ])
+
+      if (shiftsResult.status === 'rejected') {
+        throw shiftsResult.reason
+      }
+
+      if (importRunsResult.status === 'rejected') {
+        setImportRuns([])
+        setAdminNotice('יומן הייבואים לא נטען כרגע, אבל לוח המשמרות זמין.')
+      }
+    } finally {
+      setAdminLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (mode !== 'select') {
       return undefined
@@ -789,16 +814,18 @@ export default function App() {
   async function enterAdminMode() {
     try {
       setError('')
+      setAdminNotice('')
 
       if (!profile?.user || profile.user.role !== 'admin') {
         throw new Error('אין לך הרשאת מנהל')
       }
 
       syncCalendarToDateKey(todayKey)
-      await Promise.all([loadAdminShifts(), loadImportRuns()])
       setOverlay(null)
       setMode('admin')
+      await hydrateAdminData()
     } catch (err) {
+      setAdminLoading(false)
       setError(err.message || 'שגיאה בטעינת אזור ניהול')
     }
   }
@@ -806,8 +833,9 @@ export default function App() {
   async function refreshAdminCalendar() {
     try {
       setError('')
-      await Promise.all([loadAdminShifts(), loadImportRuns()])
+      await hydrateAdminData()
     } catch (err) {
+      setAdminLoading(false)
       setError(err.message || 'שגיאה ברענון לוח המשמרות')
     }
   }
@@ -1866,6 +1894,13 @@ export default function App() {
             </div>
           </div>
 
+          {adminNotice ? (
+            <div className="flash-message">
+              <span className="flash-dot" />
+              <span>{adminNotice}</span>
+            </div>
+          ) : null}
+
           <section className="card admin-header-card">
             <div className="admin-header-main">
               <div>
@@ -1884,19 +1919,19 @@ export default function App() {
             <div className="overview-grid">
               <div className="overview-card">
                 <div className="overview-label">משמרות החודש</div>
-                <div className="overview-value">{monthStats.total}</div>
+                <div className="overview-value">{adminLoading ? '...' : monthStats.total}</div>
               </div>
               <div className="overview-card">
                 <div className="overview-label">סגורות</div>
-                <div className="overview-value success-text">{monthStats.fullyConfirmed}</div>
+                <div className="overview-value success-text">{adminLoading ? '...' : monthStats.fullyConfirmed}</div>
               </div>
               <div className="overview-card">
                 <div className="overview-label">דורשות טיפול</div>
-                <div className="overview-value warning-text">{monthStats.withProblems}</div>
+                <div className="overview-value warning-text">{adminLoading ? '...' : monthStats.withProblems}</div>
               </div>
               <div className="overview-card">
                 <div className="overview-label">היום שנבחר</div>
-                <div className="overview-value">{selectedDayStats.total}</div>
+                <div className="overview-value">{adminLoading ? '...' : selectedDayStats.total}</div>
               </div>
             </div>
           </section>
@@ -1974,7 +2009,12 @@ export default function App() {
               <span className="mini-stat warning-text">דורשות טיפול {selectedDayStats.withProblems}</span>
             </div>
 
-            {selectedDayShifts.length ? (
+            {adminLoading ? (
+              <div className="empty-state panel-empty">
+                <div className="section-title">טוען את לוח הניהול</div>
+                <p>אנחנו מושכים את המשמרות והייבואים האחרונים מהשרת.</p>
+              </div>
+            ) : selectedDayShifts.length ? (
               <div className="day-preview-list">
                 {selectedDayShifts.slice(0, 3).map((shift) => renderAdminShiftCard(shift, true))}
               </div>
