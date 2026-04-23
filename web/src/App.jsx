@@ -354,6 +354,7 @@ export default function App() {
   const [userShifts, setUserShifts] = useState([])
   const [leaderboard, setLeaderboard] = useState([])
   const [currentLeaderboardUser, setCurrentLeaderboardUser] = useState(null)
+  const [activeNow, setActiveNow] = useState([])
   const [noReason, setNoReason] = useState('')
 
   const [adminShifts, setAdminShifts] = useState([])
@@ -517,6 +518,40 @@ export default function App() {
     }
   }, [overlay])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadActiveNow() {
+      if (!profile?.registered) {
+        setActiveNow([])
+        return
+      }
+
+      if (profile?.user?.registration_status !== 'approved' && profile?.user?.role !== 'admin') {
+        setActiveNow([])
+        return
+      }
+
+      try {
+        const data = await api('/me/active-now')
+        if (!cancelled) {
+          setActiveNow(data.active || [])
+          syncServerNow(data?.now?.iso)
+        }
+      } catch {
+        if (!cancelled) {
+          setActiveNow([])
+        }
+      }
+    }
+
+    loadActiveNow()
+
+    return () => {
+      cancelled = true
+    }
+  }, [profile?.registered, profile?.user?.registration_status, profile?.user?.role])
+
   async function api(path, options = {}) {
     const tg = window.Telegram?.WebApp
     const initData = tg?.initData || 'debug_user=1933391248'
@@ -572,6 +607,12 @@ export default function App() {
     syncServerNow(data?.now?.iso)
   }
 
+  async function loadActiveNow() {
+    const data = await api('/me/active-now')
+    setActiveNow(data.active || [])
+    syncServerNow(data?.now?.iso)
+  }
+
   async function loadAdminShifts() {
     const data = await api('/admin/shifts')
     setAdminShifts(data.shifts || [])
@@ -582,6 +623,29 @@ export default function App() {
     const data = await api('/admin/shift-import-runs')
     setImportRuns(data.runs || [])
   }
+
+  useEffect(() => {
+    if (mode !== 'select') {
+      return undefined
+    }
+
+    if (!profile?.registered) {
+      return undefined
+    }
+
+    if (profile?.user?.registration_status !== 'approved' && profile?.user?.role !== 'admin') {
+      return undefined
+    }
+
+    loadActiveNow().catch(() => {})
+    const intervalId = window.setInterval(() => {
+      loadActiveNow().catch(() => {})
+    }, 60000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [mode, profile?.registered, profile?.user?.registration_status, profile?.user?.role])
 
   function getShiftById(shiftId) {
     return adminShifts.find((shift) => Number(shift.id) === Number(shiftId)) || null
@@ -724,7 +788,7 @@ export default function App() {
     try {
       setError('')
       setOverlay(null)
-      await loadUserShifts()
+      await Promise.all([loadUserShifts(), loadActiveNow()])
       try {
         await loadLeaderboard()
       } catch {
@@ -1598,6 +1662,7 @@ export default function App() {
 
   const focusShift = userDashboard.focusShift
   const focusTiming = focusShift?.liveTiming
+  const activeNowCount = activeNow.reduce((total, shift) => total + (shift.people?.length || 0), 0)
 
   let focusHeadline = 'המשמרת הקרובה במרכז המסך'
   let focusTag = 'לוח אישי'
@@ -1637,6 +1702,38 @@ export default function App() {
     focusHeadline = 'אין כרגע משמרת פעילה או קרובה'
     focusTag = 'לוח אישי'
     focusCopy = 'כשתשובץ משמרת חדשה, היא תופיע כאן בצורה ברורה ומרוכזת.'
+  }
+
+  function renderActiveNowCard() {
+    return (
+      <div className="mode-card mode-card-status">
+        <span className="mode-card-tag">עכשיו במשמרת</span>
+        <strong>מי על המשמרת כרגע</strong>
+        {activeNow.length ? (
+          <>
+            <div className="mode-card-count">{activeNowCount} אנשים פעילים עכשיו</div>
+            <div className="mode-card-list">
+              {activeNow.slice(0, 3).map((shift) => (
+                <div key={`active-shift-${shift.shift_id}`} className="mode-card-list-item">
+                  <div className="list-main">{shift.title || 'משמרת פעילה'}</div>
+                  <div className="list-sub">
+                    {shift.people?.map((person) => personName(person)).join(' · ') || 'ללא שמות'}
+                  </div>
+                </div>
+              ))}
+              {activeNow.length > 3 ? (
+                <div className="list-sub muted-text">ועוד {activeNow.length - 3} משמרות פעילות כרגע</div>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mode-card-count">אין כרגע משמרת פעילה</div>
+            <span>הבלוק הזה מתעדכן לפי שרת ישראל ומראה בזמן אמת מי כבר נמצא במשמרת.</span>
+          </>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -1682,6 +1779,8 @@ export default function App() {
                 <span>כניסת מנהל מוצגת רק לחשבונות עם הרשאת ניהול מאושרת.</span>
               </div>
             )}
+
+            {renderActiveNowCard()}
           </section>
 
           <AppFooter />

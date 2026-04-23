@@ -176,6 +176,48 @@ async function updateUsernameFromMessage(msg) {
   ).catch(() => {});
 }
 
+async function getBroadcastRecipients() {
+  const rows = await all(
+    `
+    SELECT telegram_id, first_name, last_name
+    FROM users
+    WHERE telegram_id IS NOT NULL
+      AND telegram_id != ''
+      AND (registration_status = 'approved' OR role = 'admin')
+    ORDER BY last_name ASC, first_name ASC, id ASC
+    `
+  ).catch(() => []);
+
+  return rows;
+}
+
+async function sendAdminBroadcast(messageText) {
+  const text = String(messageText || '').trim();
+  if (!text) {
+    return { sent: 0, failed: 0, total: 0 };
+  }
+
+  const recipients = await getBroadcastRecipients();
+  let sent = 0;
+  let failed = 0;
+
+  for (const recipient of recipients) {
+    try {
+      await bot.sendMessage(recipient.telegram_id, `הודעה מהמנהל\n\n${text}`);
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      console.error('sendAdminBroadcast error:', recipient.telegram_id, error.message);
+    }
+  }
+
+  return {
+    total: recipients.length,
+    sent,
+    failed,
+  };
+}
+
 async function sendMainMenu(chatId, isApproved = false) {
   const keyboard = [
     [BOT_TEXT.menu.openAppButton]
@@ -379,6 +421,40 @@ bot.onText(/\/template/, async (msg) => {
   }
 });
 
+bot.onText(/\/broadcast(?:\s+([\s\S]+))?/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const requesterId = String(msg.from.id);
+  const messageText = String(match?.[1] || '').trim();
+
+  try {
+    await bootstrapAdmins();
+
+    const isAdmin = await isAdminByTelegramId(requesterId);
+    if (!isAdmin) {
+      await bot.sendMessage(chatId, 'אין לך הרשאה לבצע את הפעולה הזו.');
+      return;
+    }
+
+    if (!messageText) {
+      sessions[requesterId] = {
+        step: 'broadcast_message',
+      };
+
+      await bot.sendMessage(chatId, 'שלח עכשיו את ההודעה שתרצה להפיץ לכל המשתמשים הרשומים.');
+      return;
+    }
+
+    const result = await sendAdminBroadcast(messageText);
+    await bot.sendMessage(
+      chatId,
+      `ההודעה נשלחה ל-${result.sent} משתמשים.\nנכשלו ${result.failed} שליחות מתוך ${result.total}.`
+    );
+  } catch (err) {
+    console.error('/broadcast error:', err);
+    await bot.sendMessage(chatId, 'לא הצלחנו לשלוח את ההודעה כרגע. נסה שוב בעוד רגע.').catch(() => {});
+  }
+});
+
 // ================= ADMIN COMMANDS =================
 
 bot.onText(/\/addadmin(?:\s+(.+))?/, async (msg, match) => {
@@ -480,6 +556,27 @@ bot.on('message', async (msg) => {
     await bootstrapAdmins();
     await updateUsernameFromMessage(msg);
 
+    const session = sessions[telegramId];
+
+    if (session?.step === 'broadcast_message') {
+      const isAdmin = await isAdminByTelegramId(telegramId);
+
+      if (!isAdmin) {
+        delete sessions[telegramId];
+        await bot.sendMessage(chatId, 'אין לך הרשאה לבצע את הפעולה הזו.');
+        return;
+      }
+
+      const result = await sendAdminBroadcast(text);
+      delete sessions[telegramId];
+
+      await bot.sendMessage(
+        chatId,
+        `ההודעה נשלחה ל-${result.sent} משתמשים.\nנכשלו ${result.failed} שליחות מתוך ${result.total}.`
+      );
+      return;
+    }
+
     // Core slash commands are handled in dedicated listeners above.
     if (text.startsWith('/')) return;
 
@@ -565,7 +662,6 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    const session = sessions[telegramId];
     if (!session) return;
 
     if (session.step === 'first_name') {

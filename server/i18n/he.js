@@ -29,6 +29,7 @@ function getHelpText() {
     '/help - הסבר מלא על יכולות הבוט והמערכת.',
     '/thanks - פתיחת הודעת תודה מוכנה עבור @igoldfarb.',
     '/template - הורדת תבנית Excel לייבוא משמרות (למנהלים).',
+    '/broadcast הודעה - שליחת הודעה לכל המשתמשים הרשומים (למנהלים).',
     '/addadmin TELEGRAM_ID - הענקת הרשאת מנהל.',
     '/removeadmin TELEGRAM_ID - הסרת הרשאת מנהל.',
     '',

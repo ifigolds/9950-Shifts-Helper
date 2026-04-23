@@ -971,6 +971,14 @@ code {
     linear-gradient(180deg, rgba(20, 121, 211, 0.06), transparent);
 }
 
+.mode-card-status {
+  cursor: default;
+  border-color: rgba(22, 163, 74, 0.2);
+  background:
+    linear-gradient(180deg, rgba(241, 253, 244, 0.98), rgba(255, 255, 255, 0.94)),
+    linear-gradient(180deg, rgba(22, 163, 74, 0.05), transparent);
+}
+
 .mode-card-tag {
   display: inline-flex;
   align-items: center;
@@ -992,6 +1000,25 @@ code {
 .mode-card span:last-child {
   color: var(--muted);
   line-height: 1.6;
+}
+
+.mode-card-count {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.mode-card-list {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.mode-card-list-item {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .notice-root {

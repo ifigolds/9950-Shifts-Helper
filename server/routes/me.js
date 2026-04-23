@@ -140,6 +140,62 @@ async function getLeaderboard(currentUserId = null) {
   };
 }
 
+async function getActiveNowAssignments(now = new Date()) {
+  const rows = await all(
+    `
+    SELECT
+      sa.id AS assignment_id,
+      sa.status,
+      u.id AS user_id,
+      u.first_name,
+      u.last_name,
+      u.username,
+      s.id AS shift_id,
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      s.shift_type,
+      s.location
+    FROM shift_assignments sa
+    JOIN users u ON u.id = sa.user_id
+    JOIN shifts s ON s.id = sa.shift_id
+    WHERE sa.status = 'yes'
+      AND (u.registration_status = 'approved' OR u.role = 'admin')
+    ORDER BY s.shift_date ASC, s.start_time ASC, s.id ASC, u.last_name ASC, u.first_name ASC
+    `
+  );
+
+  const activeRows = rows.filter((row) => isShiftActive(row, now));
+  const shiftsById = new Map();
+
+  activeRows.forEach((row) => {
+    if (!shiftsById.has(row.shift_id)) {
+      shiftsById.set(row.shift_id, {
+        shift_id: row.shift_id,
+        title: row.title,
+        shift_date: row.shift_date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        shift_type: row.shift_type,
+        location: row.location,
+        timing: getShiftTimingSnapshot(row, now),
+        people: [],
+      });
+    }
+
+    shiftsById.get(row.shift_id).people.push({
+      assignment_id: row.assignment_id,
+      user_id: row.user_id,
+      first_name: row.first_name,
+      last_name: row.last_name,
+      username: row.username,
+    });
+  });
+
+  return [...shiftsById.values()];
+}
+
 async function getReplacementPeopleByShiftId(nextShiftIds) {
   if (!nextShiftIds.length) {
     return new Map();
@@ -367,6 +423,34 @@ router.get('/leaderboard', authMiddleware, async (req, res) => {
     return res.json({
       leaderboard: leaderboard.entries,
       current_user: leaderboard.current_user,
+      timezone: ISRAEL_TIMEZONE,
+      now: {
+        iso: now.toISOString(),
+        date_key: getIsraelDateKey(now),
+        label: getIsraelDateTimeLabel(now),
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/active-now', authMiddleware, async (req, res) => {
+  try {
+    const now = new Date();
+
+    if (!req.dbUser) {
+      return res.status(404).json({ error: 'המשתמש לא נמצא' });
+    }
+
+    if (req.dbUser.registration_status !== 'approved' && req.dbUser.role !== 'admin') {
+      return res.status(403).json({ error: 'ההרשמה טרם אושרה' });
+    }
+
+    const active = await getActiveNowAssignments(now);
+
+    return res.json({
+      active,
       timezone: ISRAEL_TIMEZONE,
       now: {
         iso: now.toISOString(),
