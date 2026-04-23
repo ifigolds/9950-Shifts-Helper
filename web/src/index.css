@@ -928,10 +928,32 @@ code {
 
 .mode-card-status {
   cursor: default;
-  border-color: rgba(22, 163, 74, 0.2);
+  border-color: rgba(20, 121, 211, 0.22);
   background:
-    linear-gradient(180deg, rgba(241, 253, 244, 0.98), rgba(255, 255, 255, 0.94)),
-    linear-gradient(180deg, rgba(22, 163, 74, 0.05), transparent);
+    radial-gradient(circle at top right, rgba(20, 121, 211, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(239, 247, 255, 0.98), rgba(255, 255, 255, 0.95)),
+    linear-gradient(180deg, rgba(20, 121, 211, 0.05), transparent);
+  box-shadow:
+    0 18px 36px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(20, 121, 211, 0.04);
+  animation:
+    fadeUp 0.38s ease both,
+    activeNowCardBreath 7s ease-in-out infinite 0.38s;
+}
+
+.mode-card-status .mode-card-tag {
+  background: rgba(20, 121, 211, 0.1);
+  color: var(--primary-dark);
+}
+
+.mode-card-status .mode-card-count {
+  color: var(--primary-dark);
+}
+
+.mode-card-status .mode-card-list-item {
+  border-color: rgba(20, 121, 211, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(244, 249, 255, 0.82));
 }
 
 .mode-card-tag {
@@ -1237,6 +1259,22 @@ code {
   }
 }
 
+@keyframes activeNowCardBreath {
+  0%,
+  100% {
+    transform: translateY(0);
+    box-shadow:
+      0 18px 36px rgba(15, 23, 42, 0.08),
+      0 0 0 1px rgba(20, 121, 211, 0.04);
+  }
+  50% {
+    transform: translateY(-2px);
+    box-shadow:
+      0 22px 40px rgba(15, 23, 42, 0.1),
+      0 0 0 1px rgba(20, 121, 211, 0.08);
+  }
+}
+
 @keyframes bootSlide {
   0% {
     transform: translateX(-120%);
@@ -1263,6 +1301,12 @@ code {
   .import-preview-grid,
   .import-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mode-card-status {
+    animation: none;
   }
 }
 
