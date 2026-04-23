@@ -641,6 +641,35 @@ export default function App() {
     setImportRuns(data.runs || [])
   }
 
+  async function clearImportRuns() {
+    if (!importRuns.length || importBusy) {
+      return
+    }
+
+    const confirmed = window.confirm('לנקות את לוג קבצי ה-Excel שהועלו? המשמרות עצמן לא יימחקו.')
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setError('')
+      setImportBusy(true)
+
+      const result = await api('/admin/shift-import-runs', {
+        method: 'DELETE',
+      })
+
+      setImportRuns([])
+      setAdminNotice(result?.deleted
+        ? `לוג הייבואים נוקה. נמחקו ${result.deleted} רשומות.`
+        : 'לוג הייבואים כבר היה ריק.')
+    } catch (err) {
+      setError(err.message || 'לא הצלחנו לנקות את לוג הייבואים')
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
   async function hydrateAdminData() {
     setAdminLoading(true)
     setAdminNotice('')
@@ -1429,6 +1458,9 @@ export default function App() {
 
         <div className="note-box">
           <div className="label">לוג ייבואים אחרון</div>
+          <div className="actions">
+            <button className="secondary" onClick={clearImportRuns} disabled={importBusy || !importRuns.length}>נקה לוג ייבואים</button>
+          </div>
           {renderImportRuns()}
         </div>
       </section>

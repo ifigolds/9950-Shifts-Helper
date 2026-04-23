@@ -469,6 +469,23 @@ router.get('/shift-import-runs', authMiddleware, adminMiddleware, async (req, re
   }
 });
 
+router.delete('/shift-import-runs', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const existing = await getAsync('SELECT COUNT(*) AS total FROM shift_import_runs');
+    const total = Number(existing?.total || 0);
+
+    if (!total) {
+      return res.json({ success: true, deleted: 0 });
+    }
+
+    await runAsync('DELETE FROM shift_import_runs');
+
+    return res.json({ success: true, deleted: total });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/shift-import/preview', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
