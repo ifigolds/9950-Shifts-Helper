@@ -521,6 +521,30 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
 
+    async function loadAdminModeData() {
+      if (mode !== 'admin') {
+        return
+      }
+
+      try {
+        await hydrateAdminData()
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.message || 'שגיאה בטעינת אזור ניהול')
+        }
+      }
+    }
+
+    loadAdminModeData()
+
+    return () => {
+      cancelled = true
+    }
+  }, [mode])
+
+  useEffect(() => {
+    let cancelled = false
+
     async function loadActiveNow() {
       if (!profile?.registered) {
         setActiveNow([])
@@ -823,7 +847,6 @@ export default function App() {
       syncCalendarToDateKey(todayKey)
       setOverlay(null)
       setMode('admin')
-      await hydrateAdminData()
     } catch (err) {
       setAdminLoading(false)
       setError(err.message || 'שגיאה בטעינת אזור ניהול')
