@@ -482,8 +482,7 @@ code {
 .day-preview-list,
 .overlay-body-stack,
 .modal-fields,
-.checkbox-list,
-.leaderboard-list {
+.checkbox-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -733,86 +732,6 @@ code {
 
 .import-preview-copy {
   min-width: 0;
-}
-
-.leaderboard-surface {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 249, 255, 0.92));
-}
-
-.leaderboard-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
-  align-items: center;
-  margin-top: 18px;
-  padding: 16px;
-  border-radius: 22px;
-  border: 1px solid rgba(20, 121, 211, 0.16);
-  background: linear-gradient(135deg, rgba(240, 248, 255, 0.96), rgba(255, 255, 255, 0.9));
-  box-shadow: var(--shadow-sm);
-}
-
-.leaderboard-self-rank {
-  font-size: 38px;
-  font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.04em;
-}
-
-.leaderboard-self-copy {
-  min-width: 0;
-}
-
-.leaderboard-list {
-  margin-top: 16px;
-}
-
-.leaderboard-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
-  border-radius: 20px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: var(--shadow-sm);
-}
-
-.leaderboard-row-highlight {
-  border-color: rgba(20, 121, 211, 0.22);
-  background: linear-gradient(180deg, rgba(241, 248, 255, 0.98), rgba(255, 255, 255, 0.92));
-}
-
-.leaderboard-main {
-  min-width: 0;
-}
-
-.leaderboard-hours {
-  text-align: left;
-}
-
-.leaderboard-hours strong {
-  display: block;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.leaderboard-hours span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.leaderboard-divider {
-  padding: 4px 2px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
 }
 
 .overview-grid {
@@ -1411,9 +1330,7 @@ code {
   .stats-grid,
   .overview-grid,
   .import-preview-grid,
-  .import-detail-grid,
-  .leaderboard-hero,
-  .leaderboard-row {
+  .import-detail-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1452,9 +1369,5 @@ code {
   .overlay-panel {
     padding: 18px;
     border-radius: 24px;
-  }
-
-  .leaderboard-hours {
-    text-align: right;
   }
 }
