@@ -2,7 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const { run, get, all } = require('./dbUtils');
 const { startShiftReminders } = require('./shiftReminders');
 const { BOT_TEXT, getHelpText } = require('./i18n/he');
-const { getMiniAppUrl, getTemplateUrl } = require('./appUrls');
+const { getMiniAppUrl, getTemplateUrl, getHomeScreenGuideVideoUrl } = require('./appUrls');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN || 'disabled-token', {
   polling: {
@@ -418,6 +418,37 @@ bot.onText(/\/template/, async (msg) => {
     );
   } catch (err) {
     console.error('/template error:', err);
+  }
+});
+
+bot.onText(/\/homescreen/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    await bot.sendMessage(
+      chatId,
+      [
+        'כך מוסיפים את המיני-אפליקציה למסך הבית:',
+        '1. פותחים את המערכת מתוך הבוט.',
+        '2. לוחצים על שלוש הנקודות למעלה.',
+        '3. בוחרים "Add to Home Screen".',
+        '4. מאשרים את ההוספה למסך הבית.',
+        '',
+        'מצורף סרטון קצר שמראה בדיוק איך עושים את זה.',
+      ].join('\n')
+    );
+
+    await bot.sendVideo(
+      chatId,
+      getHomeScreenGuideVideoUrl(),
+      {
+        caption: 'מדריך וידאו: הוספת המיני-אפליקציה למסך הבית',
+        supports_streaming: true,
+      }
+    );
+  } catch (err) {
+    console.error('/homescreen error:', err);
+    await bot.sendMessage(chatId, 'לא הצלחנו לשלוח את הסרטון כרגע. נסה שוב בעוד רגע.').catch(() => {});
   }
 });
 

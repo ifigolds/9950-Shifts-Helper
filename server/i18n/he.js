@@ -16,6 +16,9 @@ const BOT_TEXT = {
     prompt: 'להורדת תבנית ה-Excel לייבוא משמרות לחץ על הכפתור:',
     button: 'הורדת תבנית Excel',
   },
+  homeScreen: {
+    command: '/homescreen',
+  },
 };
 
 function getHelpText() {
@@ -28,6 +31,7 @@ function getHelpText() {
     '/start - פתיחה מחדש של הבוט והתפריט הראשי.',
     '/help - הסבר מלא על יכולות הבוט והמערכת.',
     '/thanks - פתיחת הודעת תודה מוכנה עבור @igoldfarb.',
+    '/homescreen - מדריך וידאו להוספת המיני-אפליקציה למסך הבית.',
     '/template - הורדת תבנית Excel לייבוא משמרות (למנהלים).',
     '/broadcast הודעה - שליחת הודעה לכל המשתמשים הרשומים (למנהלים).',
     '/addadmin TELEGRAM_ID - הענקת הרשאת מנהל.',

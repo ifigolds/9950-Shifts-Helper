@@ -3,6 +3,7 @@ import { parseShiftImportWorkbook } from './importWorkbook'
 
 const FALLBACK_API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-9950.png'
+const BOOT_LOGO_SRC = '/boot-logo.jpg'
 const MIN_BOOT_MS = 1400
 const ISRAEL_TIMEZONE = 'Asia/Jerusalem'
 const WEEKDAYS = ['ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳', 'א׳']
@@ -293,7 +294,7 @@ function LoadingScreen() {
   return (
     <div className="boot-screen">
       <div className="boot-card">
-        <img src={LOGO_SRC} alt="9950" className="boot-logo" />
+        <img src={BOOT_LOGO_SRC} alt="9950 shifts" className="boot-logo" />
         <div className="eyebrow">9950 SHIFT SYSTEM</div>
         <h1 className="page-title">טוען את מערכת המשמרות</h1>
         <p className="subtitle wide-copy">מסנכרן את הפרופיל, המשמרות והזמנים לפי שעון ישראל.</p>

@@ -56,9 +56,14 @@ function getTemplateUrl() {
   return buildUrl('/shift-import-template.xlsx');
 }
 
+function getHomeScreenGuideVideoUrl() {
+  return buildUrl('/mini-app-home-screen-guide.mov');
+}
+
 module.exports = {
   DEFAULT_MINI_APP_URL,
   getMiniAppBaseUrl,
   getMiniAppUrl,
+  getHomeScreenGuideVideoUrl,
   getTemplateUrl,
 };
