@@ -1663,7 +1663,6 @@ export default function App() {
 
   const focusShift = userDashboard.focusShift
   const focusTiming = focusShift?.liveTiming
-  const activeNowCount = activeNow.reduce((total, shift) => total + (shift.people?.length || 0), 0)
 
   let focusHeadline = 'המשמרת הקרובה במרכז המסך'
   let focusTag = 'לוח אישי'
@@ -1708,32 +1707,19 @@ export default function App() {
   function renderActiveNowCard() {
     return (
       <div className="mode-card mode-card-status">
-        <span className="mode-card-tag">עכשיו במשמרת</span>
-        <strong>מי על המשמרת כרגע</strong>
+        <strong>עכשיו במשמרת</strong>
         {activeNow.length ? (
-          <>
-            <div className="mode-card-count">{activeNowCount} אנשים פעילים עכשיו</div>
-            <div className="mode-card-list">
-              {activeNow.slice(0, 3).map((shift) => (
-                <div key={`active-shift-${shift.shift_id}`} className="mode-card-list-item">
-                  <div className="mode-card-active-names">
-                    {shift.people?.map((person) => personName(person)).join(' · ') || 'ללא שמות'}
-                  </div>
-                  <div className="list-sub">
-                    {shift.title || 'משמרת פעילה'}
-                  </div>
+          <div className="mode-card-list">
+            {activeNow.slice(0, 3).map((shift) => (
+              <div key={`active-shift-${shift.shift_id}`} className="mode-card-list-item">
+                <div className="mode-card-active-names">
+                  {shift.people?.map((person) => personName(person)).join(' · ') || 'ללא שמות'}
                 </div>
-              ))}
-              {activeNow.length > 3 ? (
-                <div className="list-sub muted-text">ועוד {activeNow.length - 3} משמרות פעילות כרגע</div>
-              ) : null}
-            </div>
-          </>
+              </div>
+            ))}
+          </div>
         ) : (
-          <>
-            <div className="mode-card-count">אין כרגע משמרת פעילה</div>
-            <span>הבלוק הזה מתעדכן לפי שרת ישראל ומראה בזמן אמת מי כבר נמצא במשמרת.</span>
-          </>
+          <div className="mode-card-count">אין כרגע משמרת פעילה</div>
         )}
       </div>
     )
