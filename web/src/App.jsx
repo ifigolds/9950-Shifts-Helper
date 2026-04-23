@@ -1224,8 +1224,14 @@ export default function App() {
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
-            <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
-            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
+            {isCompleted ? (
+              <div className="list-sub">{completedSummary}</div>
+            ) : (
+              <>
+                <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+                {metaLine ? <div className="list-sub">{metaLine}</div> : null}
+              </>
+            )}
           </div>
           <div className="status-cluster">
             <span className={`badge ${problemCount > 0 ? 'warning' : 'success'}`}>{badgeLabel}</span>
@@ -1410,15 +1416,25 @@ export default function App() {
     const hasResponse = shift.status && shift.status !== 'pending'
     const showReplacement = shift.liveTiming.isActive && shift.replacement_people?.length
     const metaLine = getShiftMetaLine(shift)
+    const isCompleted = shift.liveTiming.isCompleted
+    const completedSummary = [shift.start_time && shift.end_time ? `${shift.start_time} - ${shift.end_time}` : '', metaLine]
+      .filter(Boolean)
+      .join(' · ')
 
     return (
-      <div key={shift.id} className="list-item shift-card">
+      <div key={shift.id} className={`list-item shift-card ${isCompleted ? 'shift-card-completed' : ''}`}>
         <div className="shift-card-head">
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
-            <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
-            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
+            {isCompleted ? (
+              <div className="list-sub">{completedSummary}</div>
+            ) : (
+              <>
+                <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+                {metaLine ? <div className="list-sub">{metaLine}</div> : null}
+              </>
+            )}
           </div>
           <div className="status-cluster">
             <span className={`badge ${liveMeta.tone}`}>{liveMeta.label}</span>
@@ -1451,8 +1467,8 @@ export default function App() {
           </div>
         ) : null}
 
-        {shift.notes ? <div className="note-box"><div className="label">הערות למשמרת</div><div className="list-sub">{shift.notes}</div></div> : null}
-        {shift.comment ? <div className="note-box"><div className="label">סיבה שנשמרה</div><div className="list-sub">{shift.comment}</div></div> : null}
+        {isCompleted ? null : shift.notes ? <div className="note-box"><div className="label">הערות למשמרת</div><div className="list-sub">{shift.notes}</div></div> : null}
+        {isCompleted ? null : shift.comment ? <div className="note-box"><div className="label">סיבה שנשמרה</div><div className="list-sub">{shift.comment}</div></div> : null}
 
         {showReplacement ? renderNextReplacementBlock(shift) : null}
 
@@ -1715,9 +1731,11 @@ export default function App() {
             <div className="mode-card-list">
               {activeNow.slice(0, 3).map((shift) => (
                 <div key={`active-shift-${shift.shift_id}`} className="mode-card-list-item">
-                  <div className="list-main">{shift.title || 'משמרת פעילה'}</div>
-                  <div className="list-sub">
+                  <div className="mode-card-active-names">
                     {shift.people?.map((person) => personName(person)).join(' · ') || 'ללא שמות'}
+                  </div>
+                  <div className="list-sub">
+                    {shift.title || 'משמרת פעילה'}
                   </div>
                 </div>
               ))}
