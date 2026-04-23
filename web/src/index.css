@@ -928,6 +928,8 @@ code {
 
 .mode-card-status {
   cursor: default;
+  justify-content: flex-start;
+  gap: 16px;
   border-color: rgba(20, 121, 211, 0.22);
   background:
     radial-gradient(circle at top right, rgba(20, 121, 211, 0.12), transparent 42%),
@@ -941,19 +943,40 @@ code {
     activeNowCardBreath 7s ease-in-out infinite 0.38s;
 }
 
+.mode-card-status strong {
+  font-size: 19px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--primary-dark);
+}
+
 .mode-card-status .mode-card-tag {
   background: rgba(20, 121, 211, 0.1);
   color: var(--primary-dark);
 }
 
 .mode-card-status .mode-card-count {
+  font-size: 16px;
+  font-weight: 700;
   color: var(--primary-dark);
 }
 
+.mode-card-status .mode-card-list {
+  width: 100%;
+  gap: 12px;
+}
+
 .mode-card-status .mode-card-list-item {
-  border-color: rgba(20, 121, 211, 0.12);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(244, 249, 255, 0.82));
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mode-card-status .mode-card-active-names {
+  font-size: 22px;
+  line-height: 1.22;
 }
 
 .mode-card-tag {
@@ -1457,10 +1480,10 @@ code {
   }
 
   .mode-card {
-    min-height: 156px;
-    padding: 18px;
-    border-radius: 20px;
-    gap: 10px;
+      min-height: 156px;
+      padding: 18px;
+      border-radius: 20px;
+      gap: 10px;
   }
 
   .mode-card strong {
@@ -1470,6 +1493,14 @@ code {
 
   .mode-card-count {
     font-size: 17px;
+  }
+
+  .mode-card-status strong {
+    font-size: 18px;
+  }
+
+  .mode-card-status .mode-card-active-names {
+    font-size: 20px;
   }
 
   .mode-card-list {
@@ -1616,11 +1647,19 @@ code {
   }
 
   .mode-card strong {
-    font-size: 21px;
-  }
+      font-size: 21px;
+    }
 
   .mode-card-active-names {
+      font-size: 17px;
+    }
+
+  .mode-card-status strong {
     font-size: 17px;
+  }
+
+  .mode-card-status .mode-card-active-names {
+    font-size: 18px;
   }
 
   .brand-logo {
