@@ -1254,14 +1254,8 @@ export default function App() {
           <div>
             <div className="list-main">{shift.title}</div>
             <div className="list-sub">{formatHumanDate(shift.shift_date)}</div>
-            {isCompleted ? (
-              <div className="list-sub">{completedSummary}</div>
-            ) : (
-              <>
-                <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
-                {metaLine ? <div className="list-sub">{metaLine}</div> : null}
-              </>
-            )}
+            <div className="list-sub">{shift.start_time} - {shift.end_time}</div>
+            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
           </div>
           <div className="status-cluster">
             <span className={`badge ${problemCount > 0 ? 'warning' : 'success'}`}>{badgeLabel}</span>
