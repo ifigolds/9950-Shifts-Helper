@@ -197,6 +197,38 @@ async function sendShiftCard(chatId, shift, heading = 'פרטי משמרת') {
   await bot.sendMessage(chatId, lines.join('\n'), options);
 }
 
+async function replaceCallbackMessage(query, appendedLine) {
+  const originalText = String(query?.message?.text || '').trim();
+  if (!originalText || !query?.message?.chat?.id || !query?.message?.message_id) {
+    return;
+  }
+
+  const nextText = `${originalText}\n\n${appendedLine}`.trim();
+
+  try {
+    await bot.editMessageText(nextText, {
+      chat_id: query.message.chat.id,
+      message_id: query.message.message_id,
+      reply_markup: {
+        inline_keyboard: [],
+      },
+    });
+  } catch (error) {
+    console.error('replaceCallbackMessage error:', error.message);
+    try {
+      await bot.editMessageReplyMarkup(
+        { inline_keyboard: [] },
+        {
+          chat_id: query.message.chat.id,
+          message_id: query.message.message_id,
+        }
+      );
+    } catch (markupError) {
+      console.error('editMessageReplyMarkup fallback error:', markupError.message);
+    }
+  }
+}
+
 async function sendNextShift(chatId, telegramId) {
   const user = await getApprovedUserByTelegramId(telegramId);
 
@@ -1167,7 +1199,7 @@ bot.on('callback_query', async (query) => {
       );
 
       await bot.answerCallbackQuery(query.id, { text: 'עודכן: מגיע' });
-      await bot.sendMessage(query.message.chat.id, '✅ עודכן בהצלחה: אתה מגיע.');
+      await replaceCallbackMessage(query, '✅ עודכן: אתה מגיע');
       return;
     }
 
@@ -1193,7 +1225,7 @@ bot.on('callback_query', async (query) => {
       );
 
       await bot.answerCallbackQuery(query.id, { text: 'עודכן: לא בטוח' });
-      await bot.sendMessage(query.message.chat.id, '🤔 עודכן בהצלחה: לא בטוח.');
+      await replaceCallbackMessage(query, '🤔 עודכן: לא בטוח');
       return;
     }
 
@@ -1211,10 +1243,7 @@ bot.on('callback_query', async (query) => {
       );
 
       await bot.answerCallbackQuery(query.id, { text: 'יש לכתוב סיבה' });
-      await bot.sendMessage(
-        query.message.chat.id,
-        'כתוב בבקשה את הסיבה לאי הגעה למשמרת:'
-      );
+      await replaceCallbackMessage(query, '❌ עודכן: לא מגיע\nכתוב עכשיו את הסיבה בהודעה הבאה.');
       return;
     }
   } catch (err) {
