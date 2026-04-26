@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseShiftImportWorkbook } from './importWorkbook'
+import AdminAssignedPersonCard from './components/AdminAssignedPersonCard'
+import ActiveNowCard from './components/ActiveNowCard'
 
 const FALLBACK_API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-shifts-transparent.png'
@@ -371,6 +373,7 @@ export default function App() {
   const [overlayPeople, setOverlayPeople] = useState([])
   const [overlayUsers, setOverlayUsers] = useState([])
   const [selectedUserIds, setSelectedUserIds] = useState([])
+  const [unassigningKey, setUnassigningKey] = useState('')
   const importInputRef = useRef(null)
 
   const timezoneLabel = profile?.timezone || ISRAEL_TIMEZONE
@@ -958,6 +961,7 @@ export default function App() {
   async function openShiftDetailsOverlay(shiftId) {
     try {
       setError('')
+      setUnassigningKey('')
       const shift = getShiftById(shiftId)
       const data = await api(`/admin/shifts/${shiftId}`)
       setOverlayPeople(data.people || [])
@@ -1063,6 +1067,30 @@ export default function App() {
       await openShiftDetailsOverlay(overlay.shift.id)
     } catch (err) {
       setError(err.message || 'שגיאה בשיוך משתמשים')
+    }
+  }
+
+  async function unassignUserFromShift(person, personKey) {
+    if (!overlay?.shift || !person?.user_id) return
+
+    const fullName = [person.first_name, person.last_name].filter(Boolean).join(' ') || 'המשתמש'
+    const confirmed = window.confirm(`להסיר את ${fullName} מהמשמרת הזאת?`)
+    if (!confirmed) return
+
+    try {
+      setError('')
+      setUnassigningKey(personKey)
+
+      await api(`/admin/shifts/${overlay.shift.id}/assignments/${person.user_id}`, {
+        method: 'DELETE',
+      })
+
+      await loadAdminShifts()
+      await openShiftDetailsOverlay(overlay.shift.id)
+    } catch (err) {
+      setError(err.message || 'שגיאה בהסרת המשתמש מהמשמרת')
+    } finally {
+      setUnassigningKey('')
     }
   }
 
@@ -1623,41 +1651,17 @@ export default function App() {
 
   function renderAssignedPersonCard(person, index) {
     return (
-      <div key={`${person.user_id}-${index}`} className="list-item person-card">
-        <div className="list-main">{person.first_name} {person.last_name}</div>
-        <div className="list-sub">username: {person.username || '---'}</div>
-        <div className="list-sub">phone: {person.phone || '---'}</div>
-        <div className="list-sub">דרגה: {person.rank || '-'}</div>
-        <div className="list-sub">סוג שירות: {person.service_type || '-'}</div>
-        <div className="person-card-footer">
-          <span className={`badge ${statusBadgeClass(person.status)}`}>{statusText(person.status)}</span>
-        </div>
-
-        {person.comment ? (
-          <div className="note-box">
-            <div className="label">סיבה</div>
-            <div className="list-sub">{person.comment}</div>
-          </div>
-        ) : null}
-
-        <div className="actions compact-actions">
-          {person.username || person.phone ? (
-            <button className="secondary" onClick={() => openTelegramChat(person.username, person.phone)}>
-              פתח צ׳אט
-            </button>
-          ) : (
-            <button className="secondary" disabled>אין נתונים לצ׳אט</button>
-          )}
-
-          {person.phone ? (
-            <button className="secondary" onClick={() => copyText(person.phone)}>העתק טלפון</button>
-          ) : null}
-
-          {person.username ? (
-            <button className="secondary" onClick={() => copyText(person.username)}>העתק username</button>
-          ) : null}
-        </div>
-      </div>
+      <AdminAssignedPersonCard
+        key={`${person.user_id}-${index}`}
+        person={person}
+        index={index}
+        statusText={statusText}
+        statusBadgeClass={statusBadgeClass}
+        openTelegramChat={openTelegramChat}
+        copyText={copyText}
+        onUnassign={unassignUserFromShift}
+        unassigningKey={unassigningKey}
+      />
     )
   }
 
@@ -1757,24 +1761,7 @@ export default function App() {
   }
 
   function renderActiveNowCard() {
-    return (
-      <div className="mode-card mode-card-status">
-        <strong>עכשיו במשמרת</strong>
-        {activeNow.length ? (
-          <div className="mode-card-list">
-            {activeNow.slice(0, 3).map((shift) => (
-              <div key={`active-shift-${shift.shift_id}`} className="mode-card-list-item">
-                <div className="mode-card-active-names">
-                  {shift.people?.map((person) => personName(person)).join(' · ') || 'ללא שמות'}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="mode-card-count">אין כרגע משמרת פעילה</div>
-        )}
-      </div>
-    )
+    return <ActiveNowCard activeNow={activeNow} personName={personName} />
   }
 
   return (

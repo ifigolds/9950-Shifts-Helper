@@ -38,108 +38,6 @@ async function getUserStats(userId) {
   };
 }
 
-async function getLeaderboard(currentUserId = null) {
-  const users = await all(
-    `
-    SELECT
-      id,
-      first_name,
-      last_name,
-      role,
-      registration_status
-    FROM users
-    WHERE registration_status = 'approved' OR role = 'admin'
-    ORDER BY last_name ASC, first_name ASC, id ASC
-    `
-  );
-
-  if (!users.length) {
-    return {
-      entries: [],
-      current_user: null,
-    };
-  }
-
-  const completedAssignments = await all(
-    `
-    SELECT
-      sa.user_id,
-      s.shift_date,
-      s.start_time,
-      s.end_time
-    FROM shift_assignments sa
-    JOIN shifts s ON s.id = sa.shift_id
-    WHERE sa.status = 'yes'
-    ORDER BY s.shift_date ASC, s.start_time ASC, s.id ASC
-    `
-  );
-
-  const now = new Date();
-  const totalsByUserId = new Map(
-    users.map((user) => [
-      user.id,
-      {
-        completed_shifts: 0,
-        completed_hours: 0,
-      },
-    ])
-  );
-
-  completedAssignments.forEach((assignment) => {
-    if (!isShiftCompleted(assignment, now)) {
-      return;
-    }
-
-    const currentTotals = totalsByUserId.get(assignment.user_id);
-    if (!currentTotals) {
-      return;
-    }
-
-    currentTotals.completed_shifts += 1;
-    currentTotals.completed_hours += getShiftDurationHours(assignment);
-  });
-
-  const entries = users
-    .map((user) => {
-      const totals = totalsByUserId.get(user.id) || {
-        completed_shifts: 0,
-        completed_hours: 0,
-      };
-
-      return {
-        user_id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        completed_shifts: totals.completed_shifts,
-        completed_hours: Number(totals.completed_hours.toFixed(2)),
-      };
-    })
-    .sort((left, right) => {
-      if (right.completed_hours !== left.completed_hours) {
-        return right.completed_hours - left.completed_hours;
-      }
-
-      if (right.completed_shifts !== left.completed_shifts) {
-        return right.completed_shifts - left.completed_shifts;
-      }
-
-      return `${left.last_name || ''} ${left.first_name || ''}`.localeCompare(
-        `${right.last_name || ''} ${right.first_name || ''}`,
-        'he'
-      );
-    })
-    .map((entry, index) => ({
-      ...entry,
-      rank: index + 1,
-      is_current_user: currentUserId ? Number(entry.user_id) === Number(currentUserId) : false,
-    }));
-
-  return {
-    entries,
-    current_user: entries.find((entry) => entry.is_current_user) || null,
-  };
-}
-
 async function getActiveNowAssignments(now = new Date()) {
   const rows = await all(
     `
@@ -387,42 +285,13 @@ router.get('/next-shift', authMiddleware, async (req, res) => {
     }
 
     const shifts = await getEnrichedUserShifts(req.dbUser.id);
-    const nextShift = shifts.find((shift) => getShiftBounds(shift).end > now) || shifts[0] || null;
+    const nextShift = shifts.find((shift) => getShiftBounds(shift).end > now) || null;
 
     const activeShift = shifts.find((shift) => shift.is_active) || null;
 
     return res.json({
       shift: nextShift,
       active_shift: activeShift,
-      timezone: ISRAEL_TIMEZONE,
-      now: {
-        iso: now.toISOString(),
-        date_key: getIsraelDateKey(now),
-        label: getIsraelDateTimeLabel(now),
-      },
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-router.get('/leaderboard', authMiddleware, async (req, res) => {
-  try {
-    const now = new Date();
-
-    if (!req.dbUser) {
-      return res.status(404).json({ error: 'המשתמש לא נמצא' });
-    }
-
-    if (req.dbUser.registration_status !== 'approved' && req.dbUser.role !== 'admin') {
-      return res.status(403).json({ error: 'ההרשמה טרם אושרה' });
-    }
-
-    const leaderboard = await getLeaderboard(req.dbUser.id);
-
-    return res.json({
-      leaderboard: leaderboard.entries,
-      current_user: leaderboard.current_user,
       timezone: ISRAEL_TIMEZONE,
       now: {
         iso: now.toISOString(),

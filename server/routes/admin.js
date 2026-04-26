@@ -15,7 +15,8 @@ const {
 const {
   buildAssignedShiftNotification,
   buildUpdatedShiftNotification,
-  buildDeletedShiftNotification
+  buildDeletedShiftNotification,
+  buildUnassignedShiftNotification
 } = require('../shiftNotifications');
 
 async function notifyUsers(users, buildNotification, errorLabel) {
@@ -816,6 +817,54 @@ router.post('/shifts/:id/assign', authMiddleware, adminMiddleware, async (req, r
       success: true,
       notifications_sent: sent,
       notifications_failed: failed
+    });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+router.delete('/shifts/:shiftId/assignments/:userId', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const shift = await getShiftOrThrow(req.params.shiftId);
+    const userId = Number(req.params.userId);
+
+    if (!userId) {
+      return res.status(400).json({ error: 'משתמש לא תקין' });
+    }
+
+    const user = await getAsync(
+      `
+      SELECT
+        u.telegram_id,
+        u.first_name,
+        u.last_name
+      FROM shift_assignments sa
+      JOIN users u ON u.id = sa.user_id
+      WHERE sa.shift_id = ?
+        AND sa.user_id = ?
+      `,
+      [shift.id, userId]
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'המשתמש לא משויך למשמרת הזאת' });
+    }
+
+    await runAsync(
+      `DELETE FROM shift_assignments WHERE shift_id = ? AND user_id = ?`,
+      [shift.id, userId]
+    );
+
+    const { sent, failed } = await notifyUsers(
+      [user],
+      () => buildUnassignedShiftNotification(shift),
+      'Unassign shift notification error'
+    );
+
+    return res.json({
+      success: true,
+      notifications_sent: sent,
+      notifications_failed: failed,
     });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ error: err.message });

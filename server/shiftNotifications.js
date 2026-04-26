@@ -109,8 +109,20 @@ function buildDeletedShiftNotification(shift) {
   };
 }
 
+function buildUnassignedShiftNotification(shift) {
+  return {
+    text:
+      `הוסרת מהמשמרת ℹ️\n\n` +
+      `שם המשמרת: ${shift.title}\n` +
+      `מועד: ${formatShiftWindow(shift)}\n` +
+      `${formatShiftNotes(shift.notes)}` +
+      `אם זה נראה לך לא נכון, פנה למנהל.`
+  };
+}
+
 module.exports = {
   buildAssignedShiftNotification,
   buildUpdatedShiftNotification,
-  buildDeletedShiftNotification
+  buildDeletedShiftNotification,
+  buildUnassignedShiftNotification
 };

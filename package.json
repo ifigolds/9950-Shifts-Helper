@@ -7,7 +7,10 @@
     "start": "node server/app.js",
     "dev": "nodemon server/app.js",
     "postinstall": "npm rebuild sqlite3 --build-from-source",
-    "restore:known-users": "node tools/restore-approved-users.mjs"
+    "restore:known-users": "node tools/restore-approved-users.mjs",
+    "test": "node tools/verify-text-encoding.mjs && node tools/verify-shift-time.mjs",
+    "test:encoding": "node tools/verify-text-encoding.mjs",
+    "test:time": "node tools/verify-shift-time.mjs"
   },
   "keywords": [],
   "author": "",

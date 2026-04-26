@@ -161,6 +161,7 @@ function logStorageStatus() {
 }
 
 const db = new sqlite3.Database(dbPath);
+db.run('PRAGMA foreign_keys = ON');
 
 const migrations = [
   {
@@ -201,6 +202,36 @@ const migrations = [
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (admin_user_id) REFERENCES users(id)
       )`,
+    ],
+  },
+  {
+    id: '2026-04-27-unique-shift-assignments',
+    statements: [
+      `DELETE FROM shift_assignments
+       WHERE id NOT IN (
+         SELECT id
+         FROM (
+           SELECT
+             id,
+             ROW_NUMBER() OVER (
+               PARTITION BY shift_id, user_id
+               ORDER BY
+                 responded_at IS NOT NULL DESC,
+                 responded_at DESC,
+                 CASE status
+                   WHEN 'yes' THEN 0
+                   WHEN 'maybe' THEN 1
+                   WHEN 'no' THEN 2
+                   ELSE 3
+                 END,
+                 id ASC
+             ) AS duplicate_rank
+           FROM shift_assignments
+         )
+         WHERE duplicate_rank = 1
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_shift_assignments_shift_user
+       ON shift_assignments (shift_id, user_id)`,
     ],
   },
 ];

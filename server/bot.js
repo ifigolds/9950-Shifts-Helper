@@ -942,6 +942,20 @@ bot.on('message', async (msg) => {
         `SELECT * FROM users WHERE telegram_id = ?`,
         [telegramId]
       );
+      const shift = await get(
+        `SELECT * FROM shifts WHERE id = ?`,
+        [pendingReason.shift_id]
+      );
+
+      if (!shift || isShiftCompleted(shift, new Date())) {
+        await run(
+          `DELETE FROM bot_pending_reasons WHERE telegram_id = ?`,
+          [telegramId]
+        );
+
+        await bot.sendMessage(chatId, 'המשמרת כבר הסתיימה, לכן אי אפשר לעדכן תגובה בדיעבד.');
+        return;
+      }
 
       if (user) {
         await run(
