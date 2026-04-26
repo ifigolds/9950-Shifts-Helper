@@ -770,6 +770,15 @@ export default function App() {
     }
   }, [normalizedUserShifts])
 
+  const visibleUserShifts = useMemo(() => {
+    const activeAndUpcoming = normalizedUserShifts.filter((shift) => !shift.liveTiming.isCompleted)
+    if (activeAndUpcoming.length) {
+      return activeAndUpcoming.slice(0, 4)
+    }
+
+    return normalizedUserShifts.slice(-3).reverse()
+  }, [normalizedUserShifts])
+
   const monthCells = useMemo(() => {
     const current = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1)
     const firstDayOfMonth = new Date(current.getFullYear(), current.getMonth(), 1)
@@ -1569,6 +1578,43 @@ export default function App() {
     )
   }
 
+  function renderSimpleUserShiftCard(shift) {
+    const liveMeta = getLiveStateMeta(shift.liveTiming)
+    const metaLine = getShiftMetaLine(shift)
+    const hasResponse = shift.status && shift.status !== 'pending'
+    const isCompleted = shift.liveTiming.isCompleted
+
+    return (
+      <div key={`simple-${shift.id}`} className={`list-item shift-card shift-card-compact ${isCompleted ? 'shift-card-completed' : ''}`}>
+        <div className="shift-card-head">
+          <div>
+            <div className="list-main">{shift.title}</div>
+            <div className="list-sub">{formatHumanDate(shift.shift_date)} · {shift.start_time} - {shift.end_time}</div>
+            {metaLine ? <div className="list-sub">{metaLine}</div> : null}
+          </div>
+          <div className="status-cluster">
+            <span className={`badge ${liveMeta.tone}`}>{liveMeta.label}</span>
+            <span className={`badge ${statusBadgeClass(shift.status)}`}>{statusText(shift.status)}</span>
+          </div>
+        </div>
+
+        {!isCompleted ? (
+          hasResponse ? (
+            <div className="actions compact-actions">
+              <button className="secondary" onClick={() => openResponseOverlay(shift)}>שנה תגובה</button>
+            </div>
+          ) : (
+            <div className="actions compact-actions">
+              <button className="success" onClick={() => respondToShift(shift.id, 'yes')}>אני מגיע</button>
+              <button className="warning" onClick={() => respondToShift(shift.id, 'maybe')}>לא בטוח</button>
+              <button className="danger" onClick={() => openDeclineOverlay(shift)}>לא מגיע</button>
+            </div>
+          )
+        ) : null}
+      </div>
+    )
+  }
+
   function renderAssignedPersonCard(person, index) {
     return (
       <div key={`${person.user_id}-${index}`} className="list-item person-card">
@@ -1801,118 +1847,73 @@ export default function App() {
             </div>
           </section>
 
-          <section className="dashboard-layout">
-            <div className={`surface focus-surface ${focusTiming?.isActive ? 'focus-surface-active' : ''}`}>
-              <div className="focus-header">
-                <div>
-                  <div className="eyebrow">{focusTag}</div>
-                  <div className="section-title">{focusShift?.title || 'אין משמרת זמינה'}</div>
-                  <p className="subtitle wide-copy">{focusCopy}</p>
-                </div>
-                {focusShift ? (
-                  <span className={`badge ${getLiveStateMeta(focusTiming).tone}`}>{getLiveStateMeta(focusTiming).label}</span>
-                ) : null}
+          <section className={`surface focus-surface ${focusTiming?.isActive ? 'focus-surface-active' : ''}`}>
+            <div className="focus-header">
+              <div>
+                <div className="eyebrow">{focusTag}</div>
+                <div className="section-title">{focusShift?.title || 'אין משמרת זמינה'}</div>
+                <p className="subtitle wide-copy">{focusCopy}</p>
               </div>
-
               {focusShift ? (
-                <>
-                  <div className="focus-info-grid">
-                    <div className="info-tile">
-                      <div className="label">תאריך</div>
-                      <div className="info-value">{formatHumanDate(focusShift.shift_date)}</div>
-                    </div>
-                    <div className="info-tile">
-                      <div className="label">טווח שעות</div>
-                      <div className="info-value">{focusShift.start_time} - {focusShift.end_time}</div>
-                    </div>
-                    {getShiftMetaLine(focusShift) ? (
-                      <div className="info-tile">
-                        <div className="label">סוג / מיקום</div>
-                        <div className="info-value">{getShiftMetaLine(focusShift)}</div>
-                      </div>
-                    ) : null}
-                    <div className="info-tile">
-                      <div className="label">סטטוס תגובה</div>
-                      <div className="info-value">
-                        <span className={`badge ${statusBadgeClass(focusShift.status)}`}>{statusText(focusShift.status)}</span>
-                      </div>
-                    </div>
-                    <div className="info-tile">
-                      <div className="label">
-                        {focusTiming?.isActive ? 'זמן שחלף' : focusTiming?.isUpcoming ? 'זמן עד ההתחלה' : 'משך מתוכנן'}
-                      </div>
-                      <div className="info-value">
-                        {focusTiming?.isActive
-                          ? formatDurationLabel(focusTiming.elapsedMs)
-                          : focusTiming?.isUpcoming
-                            ? formatDurationLabel(focusTiming.startsInMs)
-                            : formatDurationLabel(focusTiming?.durationMs || 0)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {progressNode}
-                  {focusShift.notes ? <div className="note-box"><div className="label">הערות למשמרת</div><div className="list-sub">{focusShift.notes}</div></div> : null}
-                  {focusShift.comment ? <div className="note-box"><div className="label">סיבה שנשמרה</div><div className="list-sub">{focusShift.comment}</div></div> : null}
-                  {focusTiming?.isActive ? renderNextReplacementBlock(focusShift) : null}
-                  {renderFocusActions(focusShift)}
-                </>
-              ) : (
-                <div className="empty-state panel-empty">
-                  <div className="section-title">אין כרגע משמרות להצגה</div>
-                  <p className="subtitle">המערכת תציג כאן אוטומטית את המשמרת הפעילה או הקרובה ביותר.</p>
-                </div>
-              )}
+                <span className={`badge ${getLiveStateMeta(focusTiming).tone}`}>{getLiveStateMeta(focusTiming).label}</span>
+              ) : null}
             </div>
 
-            <aside className="summary-column">
-              <div className="surface summary-surface">
-                <div className="eyebrow">סטטוס אישי</div>
-                <div className="stats-grid">
-                  <div className="stat-tile">
-                    <span className="stat-label">משמרות שהושלמו</span>
-                    <strong>{profile?.stats?.completed_shifts || 0}</strong>
+            {focusShift ? (
+              <>
+                <div className="focus-info-grid">
+                  <div className="info-tile">
+                    <div className="label">תאריך</div>
+                    <div className="info-value">{formatHumanDate(focusShift.shift_date)}</div>
                   </div>
-                  <div className="stat-tile">
-                    <span className="stat-label">שעות שבוצעו</span>
-                    <strong>{formatHoursLabel(profile?.stats?.completed_hours || 0)}</strong>
+                  <div className="info-tile">
+                    <div className="label">שעות</div>
+                    <div className="info-value">{focusShift.start_time} - {focusShift.end_time}</div>
                   </div>
-                  <div className="stat-tile">
-                    <span className="stat-label">משמרות עתידיות</span>
-                    <strong>{userDashboard.upcomingCount}</strong>
+                  <div className="info-tile">
+                    <div className="label">תגובה</div>
+                    <div className="info-value">
+                      <span className={`badge ${statusBadgeClass(focusShift.status)}`}>{statusText(focusShift.status)}</span>
+                    </div>
                   </div>
-                  <div className="stat-tile">
-                    <span className="stat-label">סה״כ שיבוצים</span>
-                    <strong>{userDashboard.totalAssigned}</strong>
-                  </div>
+                  {getShiftMetaLine(focusShift) ? (
+                    <div className="info-tile">
+                      <div className="label">פרטים</div>
+                      <div className="info-value">{getShiftMetaLine(focusShift)}</div>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
 
-              <div className="surface summary-surface subtle-surface">
-                <div className="eyebrow">זמן נוכחי</div>
-                <div className="section-title">{currentClock}</div>
-                <p className="subtitle">כל ההצגות והחישובים במסך הזה עובדים לפי {timezoneLabel}.</p>
+                {progressNode}
+                {focusShift.notes ? <div className="note-box"><div className="label">הערה חשובה</div><div className="list-sub">{focusShift.notes}</div></div> : null}
+                {focusShift.comment ? <div className="note-box"><div className="label">הסיבה שנשמרה</div><div className="list-sub">{focusShift.comment}</div></div> : null}
+                {focusTiming?.isActive ? renderNextReplacementBlock(focusShift) : null}
+                {renderFocusActions(focusShift)}
+              </>
+            ) : (
+              <div className="empty-state panel-empty">
+                <div className="section-title">אין כרגע משמרות להצגה</div>
+                <p className="subtitle">כשתשובץ משמרת, היא תופיע כאן אוטומטית.</p>
               </div>
-            </aside>
+            )}
           </section>
 
           <section className="surface timeline-surface">
             <div className="section-head">
               <div>
-                <div className="eyebrow">ציר משמרות</div>
-                <div className="section-title">מבט מהיר על כל השיבוצים שלך</div>
+                <div className="eyebrow">מבט מהיר</div>
+                <div className="section-title">המשמרות הקרובות שלך</div>
               </div>
-              <span className="meta-pill">{userDashboard.totalAssigned} משמרות במערכת</span>
             </div>
 
-            {normalizedUserShifts.length ? (
+            {visibleUserShifts.length ? (
               <div className="timeline-list">
-                {normalizedUserShifts.map((shift) => renderUserShiftCard(shift))}
+                {visibleUserShifts.map((shift) => renderSimpleUserShiftCard(shift))}
               </div>
             ) : (
               <div className="empty-state panel-empty">
-                <div className="section-title">עדיין אין היסטוריית משמרות</div>
-                <p className="subtitle">ברגע שתשובץ למשמרת, היא תופיע כאן יחד עם הסטטוס והזמנים שלה.</p>
+                <div className="section-title">עדיין אין משמרות להצגה</div>
+                <p className="subtitle">ברגע שתשובץ למשמרת, היא תופיע כאן.</p>
               </div>
             )}
           </section>

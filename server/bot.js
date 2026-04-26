@@ -3,6 +3,8 @@ const { run, get, all } = require('./dbUtils');
 const { startShiftReminders } = require('./shiftReminders');
 const { BOT_TEXT, getHelpText } = require('./i18n/he');
 const { getMiniAppUrl, getTemplateUrl, getHomeScreenGuideVideoUrl } = require('./appUrls');
+const { getShiftDurationHours, getShiftBounds, isShiftActive, isShiftCompleted } = require('./shiftTiming');
+const { ISRAEL_TIMEZONE } = require('./timezone');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN || 'disabled-token', {
   polling: {
@@ -46,6 +48,203 @@ function delay(ms) {
 
 function buildThanksUrl() {
   return `https://t.me/${BOT_TEXT.thanksUsername}?text=${encodeURIComponent(BOT_TEXT.thanksMessage)}`;
+}
+
+function formatDurationLabel(ms) {
+  const totalMinutes = Math.max(0, Math.floor(ms / (1000 * 60)));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (!hours) return `${minutes} דק׳`;
+  if (!minutes) return `${hours} ש׳`;
+  return `${hours} ש׳ ${minutes} דק׳`;
+}
+
+function formatBotShiftDate(dateKey) {
+  const parsed = new Date(`${dateKey}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return dateKey;
+  }
+
+  return new Intl.DateTimeFormat('he-IL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: ISRAEL_TIMEZONE,
+  }).format(parsed);
+}
+
+function formatShiftStatus(status) {
+  if (status === 'yes') return 'מגיע';
+  if (status === 'no') return 'לא מגיע';
+  if (status === 'maybe') return 'לא בטוח';
+  return 'ממתין';
+}
+
+function formatShiftMeta(shift) {
+  return [shift.shift_type, shift.location].filter(Boolean).join(' • ');
+}
+
+function getShiftLiveLabel(shift, now = new Date()) {
+  const { start, end } = getShiftBounds(shift);
+
+  if (isShiftActive(shift, now)) {
+    return `פעילה עכשיו • נשארו ${formatDurationLabel(end.getTime() - now.getTime())}`;
+  }
+
+  if (isShiftCompleted(shift, now)) {
+    return 'הסתיימה';
+  }
+
+  return `מתחילה בעוד ${formatDurationLabel(start.getTime() - now.getTime())}`;
+}
+
+function buildShiftResponseKeyboard(shiftId) {
+  return {
+    inline_keyboard: [
+      [
+        { text: 'אני מגיע', callback_data: `shift_yes_${shiftId}` },
+        { text: 'לא בטוח', callback_data: `shift_maybe_${shiftId}` },
+        { text: 'לא מגיע', callback_data: `shift_no_${shiftId}` },
+      ],
+    ],
+  };
+}
+
+async function getApprovedUserByTelegramId(telegramId) {
+  return get(
+    `
+    SELECT *
+    FROM users
+    WHERE telegram_id = ?
+      AND (registration_status = 'approved' OR role = 'admin')
+    `,
+    [String(telegramId)]
+  );
+}
+
+async function getUserAssignedShifts(userId) {
+  const shifts = await all(
+    `
+    SELECT
+      sa.shift_id,
+      sa.status,
+      sa.responded_at,
+      sa.comment,
+      s.id,
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      s.shift_type,
+      s.location,
+      s.notes
+    FROM shift_assignments sa
+    JOIN shifts s ON s.id = sa.shift_id
+    WHERE sa.user_id = ?
+    ORDER BY s.shift_date ASC, s.start_time ASC, s.id ASC
+    `,
+    [userId]
+  );
+
+  return shifts.map((shift) => ({
+    ...shift,
+    duration_hours: getShiftDurationHours(shift),
+  }));
+}
+
+function getBotVisibleShifts(shifts) {
+  const nonCompleted = shifts.filter((shift) => !isShiftCompleted(shift));
+  if (nonCompleted.length) {
+    return nonCompleted.slice(0, 4);
+  }
+
+  return shifts.slice(-3).reverse();
+}
+
+async function sendShiftCard(chatId, shift, heading = 'פרטי משמרת') {
+  const now = new Date();
+  const meta = formatShiftMeta(shift);
+  const lines = [
+    heading,
+    '',
+    shift.title,
+    formatBotShiftDate(shift.shift_date),
+    `${shift.start_time} - ${shift.end_time}`,
+  ];
+
+  if (meta) {
+    lines.push(meta);
+  }
+
+  lines.push(`סטטוס משמרת: ${getShiftLiveLabel(shift, now)}`);
+  lines.push(`התגובה שלך: ${formatShiftStatus(shift.status)}`);
+
+  if (shift.comment) {
+    lines.push(`סיבה שנשמרה: ${shift.comment}`);
+  }
+
+  if (shift.notes && !isShiftCompleted(shift, now)) {
+    lines.push(`הערות: ${shift.notes}`);
+  }
+
+  const options = {};
+  if (!isShiftCompleted(shift, now)) {
+    options.reply_markup = buildShiftResponseKeyboard(shift.id);
+  }
+
+  await bot.sendMessage(chatId, lines.join('\n'), options);
+}
+
+async function sendNextShift(chatId, telegramId) {
+  const user = await getApprovedUserByTelegramId(telegramId);
+
+  if (!user) {
+    await bot.sendMessage(chatId, 'כדי להשתמש בפעולה הזו צריך להיות משתמש מאושר במערכת.');
+    return;
+  }
+
+  const shifts = await getUserAssignedShifts(user.id);
+  const nextShift = shifts.find((shift) => !isShiftCompleted(shift)) || shifts[0] || null;
+
+  if (!nextShift) {
+    await bot.sendMessage(chatId, 'עדיין אין לך משמרות במערכת.');
+    return;
+  }
+
+  await sendShiftCard(chatId, nextShift, isShiftActive(nextShift) ? 'המשמרת הפעילה שלך' : 'המשמרת הקרובה שלך');
+}
+
+async function sendUserShiftsDigest(chatId, telegramId) {
+  const user = await getApprovedUserByTelegramId(telegramId);
+
+  if (!user) {
+    await bot.sendMessage(chatId, 'כדי להשתמש בפעולה הזו צריך להיות משתמש מאושר במערכת.');
+    return;
+  }
+
+  const shifts = await getUserAssignedShifts(user.id);
+  const visibleShifts = getBotVisibleShifts(shifts);
+
+  if (!visibleShifts.length) {
+    await bot.sendMessage(chatId, 'עדיין אין לך משמרות במערכת.');
+    return;
+  }
+
+  await bot.sendMessage(
+    chatId,
+    [
+      'המשמרות שלך בבוט',
+      '',
+      'אפשר לעדכן תגובה גם בלי לפתוח את המיני־אפליקציה.',
+      'פשוט לוחצים על הכפתורים מתחת לכל משמרת.',
+    ].join('\n')
+  );
+
+  for (const shift of visibleShifts) {
+    await sendShiftCard(chatId, shift, 'משמרת');
+  }
 }
 
 function rememberBotError(error) {
@@ -219,9 +418,14 @@ async function sendAdminBroadcast(messageText) {
 }
 
 async function sendMainMenu(chatId, isApproved = false) {
-  const keyboard = [
-    [BOT_TEXT.menu.openAppButton]
-  ];
+  const keyboard = isApproved
+    ? [
+        [BOT_TEXT.menu.nextShiftButton, BOT_TEXT.menu.myShiftsButton],
+        [BOT_TEXT.menu.openAppButton],
+      ]
+    : [
+        [BOT_TEXT.menu.openAppButton],
+      ];
 
   if (!isApproved) {
     keyboard.unshift([BOT_TEXT.menu.registerButton]);
@@ -307,7 +511,8 @@ bot.onText(/\/start/, async (msg) => {
       `• לראות את המשמרת הקרובה שלך\n` +
       `• לאשר הגעה בלחיצה אחת\n` +
       `• לדווח אם לא תוכל להגיע (עם סיבה)\n` +
-      `• להתעדכן בכל שינוי בזמן אמת`
+      `• להתעדכן בכל שינוי בזמן אמת\n` +
+      `• ולעבוד גם ישירות מתוך הבוט, בלי לפתוח Mini App`
     );
 
     await delay(500);
@@ -386,6 +591,24 @@ bot.onText(/\/thanks/, async (msg) => {
     await bot.sendMessage(chatId, `${BOT_TEXT.thanks.previewLabel}\n${BOT_TEXT.thanksMessage}`);
   } catch (err) {
     console.error('/thanks error:', err);
+  }
+});
+
+bot.onText(/\/nextshift/, async (msg) => {
+  try {
+    await sendNextShift(msg.chat.id, String(msg.from.id));
+  } catch (err) {
+    console.error('/nextshift error:', err);
+    await bot.sendMessage(msg.chat.id, 'לא הצלחנו לטעון את המשמרת הקרובה כרגע.').catch(() => {});
+  }
+});
+
+bot.onText(/\/myshifts/, async (msg) => {
+  try {
+    await sendUserShiftsDigest(msg.chat.id, String(msg.from.id));
+  } catch (err) {
+    console.error('/myshifts error:', err);
+    await bot.sendMessage(msg.chat.id, 'לא הצלחנו לטעון את המשמרות כרגע.').catch(() => {});
   }
 });
 
@@ -664,6 +887,16 @@ bot.on('message', async (msg) => {
       return;
     }
 
+    if (text === BOT_TEXT.menu.nextShiftButton) {
+      await sendNextShift(chatId, telegramId);
+      return;
+    }
+
+    if (text === BOT_TEXT.menu.myShiftsButton) {
+      await sendUserShiftsDigest(chatId, telegramId);
+      return;
+    }
+
     // start registration
     if (text === BOT_TEXT.menu.registerButton) {
       const existingUser = await ensureUserNotRegisterTwice(telegramId);
@@ -870,6 +1103,8 @@ bot.on('callback_query', async (query) => {
           }
         }
       ).catch(() => {});
+
+      await sendMainMenu(user.telegram_id, true).catch(() => {});
 
       return;
     }

@@ -27,6 +27,20 @@ function buildShiftReminderText(shift) {
   );
 }
 
+function buildShiftReminderOptions(shiftId) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: 'אני מגיע', callback_data: `shift_yes_${shiftId}` },
+          { text: 'לא בטוח', callback_data: `shift_maybe_${shiftId}` },
+          { text: 'לא מגיע', callback_data: `shift_no_${shiftId}` },
+        ],
+      ],
+    },
+  };
+}
+
 function buildHandoverText(currentShift, nextShift, nextPeople) {
   const peopleBlock = nextPeople.map(formatPersonLine).join('\n');
 
@@ -140,7 +154,7 @@ async function processReminders(bot) {
               shiftId: shift.id,
               userId: person.user_id,
             },
-            () => bot.sendMessage(person.telegram_id, buildShiftReminderText(shift))
+            () => bot.sendMessage(person.telegram_id, buildShiftReminderText(shift), buildShiftReminderOptions(shift.id))
           );
         } catch (err) {
           console.error('shift_start_reminder error:', err.message);
