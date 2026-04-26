@@ -156,11 +156,88 @@ async function getUserAssignedShifts(userId) {
 
 function getBotVisibleShifts(shifts) {
   const nonCompleted = shifts.filter((shift) => !isShiftCompleted(shift));
-  if (nonCompleted.length) {
-    return nonCompleted.slice(0, 4);
+  return nonCompleted.slice(0, 4);
+}
+
+function getRecentCompletedShifts(shifts) {
+  return shifts
+    .filter((shift) => isShiftCompleted(shift))
+    .slice(-3)
+    .reverse();
+}
+
+function buildDigestEmoji(status) {
+  if (status === 'yes') return '✅';
+  if (status === 'maybe') return '🤔';
+  if (status === 'no') return '❌';
+  return '⏳';
+}
+
+function buildShiftDigestText(shifts, completedShifts = []) {
+  if (!shifts.length) {
+    const completedLine = completedShifts.length
+      ? `🩶 הסתיימו לאחרונה ${completedShifts.length} משמרות.`
+      : '';
+
+    return [
+      '🗓️ סיכום המשמרות שלך',
+      '',
+      'אין כרגע משמרות פתוחות שדורשות תגובה.',
+      completedLine,
+      '🇮🇱 כל הזמנים מוצגים לפי שעון ישראל.',
+    ].filter(Boolean).join('\n');
   }
 
-  return shifts.slice(-3).reverse();
+  const lines = [
+    '🗓️ סיכום המשמרות שלך',
+    '',
+    'אלה המשמרות הפעילות או הקרובות שלך:',
+    '',
+  ];
+
+  shifts.forEach((shift, index) => {
+    const meta = formatShiftMeta(shift);
+    lines.push(
+      `${index + 1}. ${buildDigestEmoji(shift.status)} ${formatBotShiftDate(shift.shift_date)}`,
+      `🕒 ${shift.start_time} - ${shift.end_time}`,
+      `📌 ${shift.title}${meta ? ` • ${meta}` : ''}`,
+      `📣 הסטטוס שלך: ${formatShiftStatus(shift.status)}`,
+      ''
+    );
+  });
+
+  lines.push('🇮🇱 כל הזמנים מוצגים לפי שעון ישראל.');
+  lines.push('אפשר להגיב ישירות דרך הכפתורים שמתחת לכל משמרת.');
+
+  if (completedShifts.length) {
+    lines.push(`🩶 בארכיון כרגע ${completedShifts.length} משמרות שהסתיימו.`);
+  }
+
+  return lines.join('\n');
+}
+
+async function getAssignedShiftForUser(userId, shiftId) {
+  return get(
+    `
+    SELECT
+      sa.shift_id,
+      sa.status,
+      sa.responded_at,
+      sa.comment,
+      s.id,
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      s.shift_type,
+      s.location,
+      s.notes
+    FROM shift_assignments sa
+    JOIN shifts s ON s.id = sa.shift_id
+    WHERE sa.shift_id = ? AND sa.user_id = ?
+    `,
+    [shiftId, userId]
+  );
 }
 
 async function sendShiftCard(chatId, shift, heading = 'פרטי משמרת') {
@@ -258,21 +335,9 @@ async function sendUserShiftsDigest(chatId, telegramId) {
 
   const shifts = await getUserAssignedShifts(user.id);
   const visibleShifts = getBotVisibleShifts(shifts);
+  const completedShifts = getRecentCompletedShifts(shifts);
 
-  if (!visibleShifts.length) {
-    await bot.sendMessage(chatId, 'עדיין אין לך משמרות במערכת.');
-    return;
-  }
-
-  await bot.sendMessage(
-    chatId,
-    [
-      'המשמרות שלך בבוט',
-      '',
-      'אפשר לעדכן תגובה גם בלי לפתוח את המיני־אפליקציה.',
-      'פשוט לוחצים על הכפתורים מתחת לכל משמרת.',
-    ].join('\n')
-  );
+  await bot.sendMessage(chatId, buildShiftDigestText(visibleShifts, completedShifts));
 
   for (const shift of visibleShifts) {
     await sendShiftCard(chatId, shift, 'משמרת');
@@ -1189,6 +1254,18 @@ bot.on('callback_query', async (query) => {
         return;
       }
 
+      const shift = await getAssignedShiftForUser(user.id, shiftId);
+      if (!shift) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת לא נמצאה' });
+        return;
+      }
+
+      if (isShiftCompleted(shift, new Date())) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת כבר הסתיימה' });
+        await replaceCallbackMessage(query, '⏱️ אי אפשר לעדכן תגובה למשמרת שהסתיימה.');
+        return;
+      }
+
       await run(
         `
         UPDATE shift_assignments
@@ -1215,6 +1292,18 @@ bot.on('callback_query', async (query) => {
         return;
       }
 
+      const shift = await getAssignedShiftForUser(user.id, shiftId);
+      if (!shift) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת לא נמצאה' });
+        return;
+      }
+
+      if (isShiftCompleted(shift, new Date())) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת כבר הסתיימה' });
+        await replaceCallbackMessage(query, '⏱️ אי אפשר לעדכן תגובה למשמרת שהסתיימה.');
+        return;
+      }
+
       await run(
         `
         UPDATE shift_assignments
@@ -1231,6 +1320,27 @@ bot.on('callback_query', async (query) => {
 
     if (data.startsWith('shift_no_')) {
       const shiftId = data.replace('shift_no_', '');
+      const user = await get(
+        `SELECT * FROM users WHERE telegram_id = ?`,
+        [telegramId]
+      );
+
+      if (!user) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשתמש לא נמצא' });
+        return;
+      }
+
+      const shift = await getAssignedShiftForUser(user.id, shiftId);
+      if (!shift) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת לא נמצאה' });
+        return;
+      }
+
+      if (isShiftCompleted(shift, new Date())) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת כבר הסתיימה' });
+        await replaceCallbackMessage(query, '⏱️ אי אפשר לעדכן תגובה למשמרת שהסתיימה.');
+        return;
+      }
 
       await run(
         `DELETE FROM bot_pending_reasons WHERE telegram_id = ?`,

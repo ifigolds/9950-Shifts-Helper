@@ -753,12 +753,11 @@ export default function App() {
   const userDashboard = useMemo(() => {
     const activeShift = normalizedUserShifts.find((shift) => shift.liveTiming.isActive) || null
     const upcomingShift = normalizedUserShifts.find((shift) => shift.liveTiming.isUpcoming) || null
-    const fallbackShift = normalizedUserShifts.length ? normalizedUserShifts[normalizedUserShifts.length - 1] : null
     const focusShift =
       activeShift ||
       upcomingShift ||
       normalizedUserShifts.find((shift) => !shift.liveTiming.isCompleted) ||
-      fallbackShift
+      null
 
     const upcomingCount = normalizedUserShifts.filter((shift) => shift.liveTiming.isUpcoming).length
 
@@ -772,11 +771,14 @@ export default function App() {
 
   const visibleUserShifts = useMemo(() => {
     const activeAndUpcoming = normalizedUserShifts.filter((shift) => !shift.liveTiming.isCompleted)
-    if (activeAndUpcoming.length) {
-      return activeAndUpcoming.slice(0, 4)
-    }
+    return activeAndUpcoming.slice(0, 4)
+  }, [normalizedUserShifts])
 
-    return normalizedUserShifts.slice(-3).reverse()
+  const archivedUserShifts = useMemo(() => {
+    return normalizedUserShifts
+      .filter((shift) => shift.liveTiming.isCompleted)
+      .slice(-4)
+      .reverse()
   }, [normalizedUserShifts])
 
   const monthCells = useMemo(() => {
@@ -1583,6 +1585,10 @@ export default function App() {
     const metaLine = getShiftMetaLine(shift)
     const hasResponse = shift.status && shift.status !== 'pending'
     const isCompleted = shift.liveTiming.isCompleted
+    const responseBadge =
+      isCompleted
+        ? null
+        : <span className={`badge ${statusBadgeClass(shift.status)}`}>{statusText(shift.status)}</span>
 
     return (
       <div key={`simple-${shift.id}`} className={`list-item shift-card shift-card-compact ${isCompleted ? 'shift-card-completed' : ''}`}>
@@ -1594,7 +1600,7 @@ export default function App() {
           </div>
           <div className="status-cluster">
             <span className={`badge ${liveMeta.tone}`}>{liveMeta.label}</span>
-            <span className={`badge ${statusBadgeClass(shift.status)}`}>{statusText(shift.status)}</span>
+            {responseBadge}
           </div>
         </div>
 
@@ -1917,6 +1923,21 @@ export default function App() {
               </div>
             )}
           </section>
+
+          {archivedUserShifts.length ? (
+            <section className="surface timeline-surface timeline-surface-archived">
+              <div className="section-head">
+                <div>
+                  <div className="eyebrow">ארכיון קצר</div>
+                  <div className="section-title">משמרות שהסתיימו</div>
+                </div>
+              </div>
+
+              <div className="timeline-list">
+                {archivedUserShifts.map((shift) => renderSimpleUserShiftCard(shift))}
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
 

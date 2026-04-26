@@ -621,6 +621,12 @@ code {
   font-size: 12px;
 }
 
+.timeline-surface-archived {
+  background:
+    linear-gradient(180deg, rgba(246, 248, 251, 0.96), rgba(255, 255, 255, 0.94)),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.02), transparent);
+}
+
 .problem-strip {
   display: flex;
   flex-wrap: wrap;

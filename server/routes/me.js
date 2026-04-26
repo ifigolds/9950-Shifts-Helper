@@ -480,6 +480,27 @@ router.post('/shift-response', authMiddleware, async (req, res) => {
     }
 
     const finalComment = status === 'no' ? String(comment || '').trim() : '';
+    const assignedShift = await get(
+      `
+      SELECT
+        s.id,
+        s.shift_date,
+        s.start_time,
+        s.end_time
+      FROM shift_assignments sa
+      JOIN shifts s ON s.id = sa.shift_id
+      WHERE sa.shift_id = ? AND sa.user_id = ?
+      `,
+      [shiftId, req.dbUser.id]
+    );
+
+    if (!assignedShift) {
+      return res.status(404).json({ error: 'המשמרת לא נמצאה' });
+    }
+
+    if (isShiftCompleted(assignedShift, new Date())) {
+      return res.status(400).json({ error: 'אי אפשר לעדכן תגובה למשמרת שהסתיימה' });
+    }
 
     await run(
       `
