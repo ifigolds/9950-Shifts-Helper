@@ -30,10 +30,12 @@
 .shift-mission-full:fullscreen {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: 9999;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
+  min-height: 100dvh;
   border-radius: 0;
   border: 0;
 }
@@ -79,6 +81,14 @@
 .mission-controls button:hover {
   border-color: rgba(94, 234, 212, 0.5);
   background: rgba(8, 47, 73, 0.62);
+}
+
+.shift-mission-expanded .mission-controls,
+.shift-mission-full:fullscreen .mission-controls {
+  left: max(16px, env(safe-area-inset-left));
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  justify-content: center;
 }
 
 .mission-sky {
@@ -259,12 +269,19 @@
 
 .route-label-start {
   left: 0;
+  top: 31px;
   transform: none;
 }
 
 .route-label-now {
-  left: calc(var(--mission-progress) * 100%);
+  left: clamp(62px, calc(var(--mission-progress) * 100%), calc(100% - 62px));
+  top: -12px;
+  padding: 3px 8px;
+  border: 1px solid rgba(250, 204, 21, 0.2);
+  border-radius: 999px;
   color: #fef3c7;
+  background: rgba(15, 23, 42, 0.54);
+  backdrop-filter: blur(8px);
   text-shadow: 0 0 16px rgba(250, 204, 21, 0.5);
 }
 
@@ -295,6 +312,11 @@
 .shift-mission-compact .route-label-now {
   display: block;
   top: 20px;
+  left: clamp(48px, calc(var(--mission-progress) * 100%), calc(100% - 48px));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
   font-size: 9px;
 }
 
@@ -618,8 +640,25 @@
     border-radius: 22px;
   }
 
+  .shift-mission-expanded,
+  .shift-mission-full:fullscreen {
+    min-height: 100dvh;
+  }
+
   .mission-hud {
     padding: 18px;
+  }
+
+  .shift-mission-expanded .mission-hud,
+  .shift-mission-full:fullscreen .mission-hud {
+    padding: max(18px, env(safe-area-inset-top)) 16px max(92px, env(safe-area-inset-bottom));
+  }
+
+  .shift-mission-expanded .mission-route,
+  .shift-mission-full:fullscreen .mission-route {
+    left: 10%;
+    right: 12%;
+    top: calc(50% + 48px);
   }
 
   .mission-hud-grid {

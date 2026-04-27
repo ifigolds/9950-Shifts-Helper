@@ -240,6 +240,32 @@ const migrations = [
       `ALTER TABLE users ADD COLUMN favorite_color TEXT DEFAULT ''`,
     ],
   },
+  {
+    id: '2026-04-27-add-arrival-confirmation-column',
+    statements: [
+      `ALTER TABLE shift_assignments ADD COLUMN arrival_confirmed_at DATETIME`,
+    ],
+  },
+  {
+    id: '2026-04-27-extend-notification-log',
+    statements: [
+      `ALTER TABLE shift_notification_log ADD COLUMN recipient_telegram_id TEXT`,
+      `ALTER TABLE shift_notification_log ADD COLUMN delivery_status TEXT NOT NULL DEFAULT 'sent'`,
+      `ALTER TABLE shift_notification_log ADD COLUMN error_message TEXT`,
+      `ALTER TABLE shift_notification_log ADD COLUMN clicked_at DATETIME`,
+    ],
+  },
+  {
+    id: '2026-04-27-fix-liad-display-name',
+    statements: [
+      `UPDATE users
+       SET first_name = 'ליעד מסינגיסר',
+           last_name = '',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE first_name = 'ליעד מסינגיסר'
+         AND last_name = 'מסינגיסר'`,
+    ],
+  },
 ];
 
 function runStatement(statement) {

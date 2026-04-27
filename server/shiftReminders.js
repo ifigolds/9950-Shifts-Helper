@@ -41,6 +41,41 @@ function buildShiftReminderOptions(shiftId) {
   };
 }
 
+function buildStartArrivalOptions(shiftId) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: 'אני מגיע', callback_data: `shift_yes_${shiftId}` },
+          { text: 'לא בטוח', callback_data: `shift_maybe_${shiftId}` },
+          { text: 'לא מגיע', callback_data: `shift_no_${shiftId}` },
+        ],
+        [
+          { text: '📍 אני במקום', callback_data: `shift_arrived_${shiftId}` },
+        ],
+      ],
+    },
+  };
+}
+
+function getBootstrapAdminIds() {
+  return String(process.env.ADMIN_TELEGRAM_IDS || '')
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+async function getAdminTelegramIds() {
+  const dbAdmins = await all(
+    `SELECT telegram_id FROM users WHERE role = 'admin' AND telegram_id IS NOT NULL AND telegram_id != ''`
+  ).catch(() => []);
+
+  return [...new Set([
+    ...getBootstrapAdminIds(),
+    ...dbAdmins.map((row) => String(row.telegram_id)),
+  ])];
+}
+
 function buildHandoverText(currentShift, nextShift, nextPeople) {
   const peopleBlock = nextPeople.map(formatPersonLine).join('\n');
 
@@ -53,6 +88,22 @@ function buildHandoverText(currentShift, nextShift, nextPeople) {
   );
 }
 
+function buildLateArrivalAdminText(shift, person) {
+  const displayName = [person.first_name, person.last_name].filter(Boolean).join(' ') || 'משתמש ללא שם';
+  const phoneLine = person.phone ? `\nטלפון: ${person.phone}` : '';
+  const usernameLine = person.username ? `\nTelegram: @${String(person.username).replace(/^@/, '')}` : '';
+
+  return [
+    '⚠️ איחור אפשרי למשמרת',
+    '',
+    `${displayName} סימן שהוא מגיע, אבל עדיין לא אישר "אני במקום".`,
+    `משמרת: ${shift.title}`,
+    formatShiftWindow(shift),
+    phoneLine.trim(),
+    usernameLine.trim(),
+  ].filter(Boolean).join('\n');
+}
+
 async function fetchShiftsWithPeople() {
   const shifts = await all(`
     SELECT id, title, shift_date, start_time, end_time, notes
@@ -63,8 +114,10 @@ async function fetchShiftsWithPeople() {
   const people = await all(`
     SELECT
       sa.shift_id,
+      sa.id AS assignment_id,
       sa.user_id,
       sa.status,
+      sa.arrival_confirmed_at,
       u.telegram_id,
       u.username,
       u.phone,
@@ -100,7 +153,35 @@ async function trySendNotification(notificationKey, payload, sendFn) {
     return false;
   }
 
-  await sendFn();
+  try {
+    await sendFn();
+  } catch (error) {
+    await run(
+      `
+      INSERT INTO shift_notification_log (
+        notification_key,
+        notification_type,
+        shift_id,
+        user_id,
+        related_shift_id,
+        recipient_telegram_id,
+        delivery_status,
+        error_message
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 'failed', ?)
+      `,
+      [
+        notificationKey,
+        payload.notificationType,
+        payload.shiftId,
+        payload.userId,
+        payload.relatedShiftId || null,
+        payload.recipientTelegramId || null,
+        String(error?.message || error).slice(0, 240),
+      ]
+    );
+    throw error;
+  }
 
   await run(
     `
@@ -109,9 +190,11 @@ async function trySendNotification(notificationKey, payload, sendFn) {
       notification_type,
       shift_id,
       user_id,
-      related_shift_id
+      related_shift_id,
+      recipient_telegram_id,
+      delivery_status
     )
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, 'sent')
     `,
     [
       notificationKey,
@@ -119,6 +202,7 @@ async function trySendNotification(notificationKey, payload, sendFn) {
       payload.shiftId,
       payload.userId,
       payload.relatedShiftId || null,
+      payload.recipientTelegramId || null,
     ]
   );
   return true;
@@ -153,11 +237,44 @@ async function processReminders(bot) {
               notificationType: 'shift_start_reminder',
               shiftId: shift.id,
               userId: person.user_id,
+              recipientTelegramId: person.telegram_id,
             },
-            () => bot.sendMessage(person.telegram_id, buildShiftReminderText(shift), buildShiftReminderOptions(shift.id))
+            () => bot.sendMessage(person.telegram_id, buildShiftReminderText(shift), buildStartArrivalOptions(shift.id))
           );
         } catch (err) {
           console.error('shift_start_reminder error:', err.message);
+        }
+      }
+    }
+
+    const lateCheckAt = new Date(start.getTime() + 10 * 60 * 1000);
+    if (Math.abs(now - lateCheckAt) <= REMINDER_WINDOW_MS) {
+      const adminTelegramIds = await getAdminTelegramIds();
+
+      for (const person of assignedPeople) {
+        if (person.status !== 'yes' || person.arrival_confirmed_at) {
+          continue;
+        }
+
+        for (const adminTelegramId of adminTelegramIds) {
+          const key = `arrival-late:${shift.id}:${person.user_id}:${adminTelegramId}`;
+
+          try {
+            await trySendNotification(
+              key,
+              {
+                notificationType: 'arrival_late_admin',
+                shiftId: shift.id,
+                userId: person.user_id,
+                recipientTelegramId: adminTelegramId,
+              },
+              () => bot.sendMessage(adminTelegramId, buildLateArrivalAdminText(shift, person), {
+                disable_notification: true,
+              })
+            );
+          } catch (err) {
+            console.error('arrival_late_admin error:', err.message);
+          }
         }
       }
     }
@@ -191,6 +308,7 @@ async function processReminders(bot) {
             shiftId: shift.id,
             userId: person.user_id,
             relatedShiftId: nextShift.id,
+            recipientTelegramId: person.telegram_id,
           },
           () => bot.sendMessage(person.telegram_id, handoverText)
         );

@@ -3,7 +3,7 @@ const { run, get, all } = require('./dbUtils');
 const { startShiftReminders } = require('./shiftReminders');
 const { BOT_TEXT, getHelpText } = require('./i18n/he');
 const { getMiniAppUrl, getTemplateUrl, getHomeScreenGuideVideoUrl } = require('./appUrls');
-const { getShiftDurationHours, getShiftBounds, isShiftActive, isShiftCompleted } = require('./shiftTiming');
+const { getShiftDurationHours, getShiftBounds, isArrivalConfirmationWindow, isShiftActive, isShiftCompleted } = require('./shiftTiming');
 const { ISRAEL_TIMEZONE } = require('./timezone');
 
 const bot = new TelegramBot(process.env.BOT_TOKEN || 'disabled-token', {
@@ -122,6 +122,26 @@ function buildShiftResponseKeyboard(shiftId) {
   };
 }
 
+function buildShiftActionKeyboard(shiftId, options = {}) {
+  const keyboard = [
+    [
+      { text: 'אני מגיע', callback_data: `shift_yes_${shiftId}` },
+      { text: 'לא בטוח', callback_data: `shift_maybe_${shiftId}` },
+      { text: 'לא מגיע', callback_data: `shift_no_${shiftId}` },
+    ],
+  ];
+
+  if (options.includeArrival) {
+    keyboard.push([
+      { text: '📍 אני במקום', callback_data: `shift_arrived_${shiftId}` },
+    ]);
+  }
+
+  return {
+    inline_keyboard: keyboard,
+  };
+}
+
 async function getApprovedUserByTelegramId(telegramId) {
   return get(
     `
@@ -141,6 +161,7 @@ async function getUserAssignedShifts(userId) {
       sa.shift_id,
       sa.status,
       sa.responded_at,
+      sa.arrival_confirmed_at,
       sa.comment,
       s.id,
       s.title,
@@ -233,6 +254,7 @@ async function getAssignedShiftForUser(userId, shiftId) {
       sa.shift_id,
       sa.status,
       sa.responded_at,
+      sa.arrival_confirmed_at,
       sa.comment,
       s.id,
       s.title,
@@ -278,7 +300,9 @@ async function sendShiftCard(chatId, shift, heading = 'פרטי משמרת') {
 
   const options = {};
   if (!isShiftCompleted(shift, now)) {
-    options.reply_markup = buildShiftResponseKeyboard(shift.id);
+    options.reply_markup = buildShiftActionKeyboard(shift.id, {
+      includeArrival: shift.status === 'yes' && !shift.arrival_confirmed_at && isArrivalConfirmationWindow(shift, now),
+    });
   }
 
   await bot.sendMessage(chatId, lines.join('\n'), options);
@@ -333,6 +357,86 @@ async function sendNextShift(chatId, telegramId) {
   }
 
   await sendShiftCard(chatId, nextShift, isShiftActive(nextShift) ? 'המשמרת הפעילה שלך' : 'המשמרת הקרובה שלך');
+}
+
+function pickStatusShift(shifts, now = new Date()) {
+  return (
+    shifts.find((shift) => isShiftActive(shift, now)) ||
+    shifts.find((shift) => getShiftBounds(shift).end > now) ||
+    shifts[0] ||
+    null
+  );
+}
+
+function buildStatusText(user, shift) {
+  if (!shift) {
+    return [
+      '📍 סטטוס אישי',
+      '',
+      `${[user.first_name, user.last_name].filter(Boolean).join(' ') || 'משתמש יקר'}, אין לך כרגע משמרות במערכת.`,
+      'כשישובצו לך משמרות חדשות הן יופיעו כאן ובפקודה /myshifts.',
+    ].join('\n');
+  }
+
+  const now = new Date();
+  const meta = formatShiftMeta(shift);
+  const lines = [
+    '📍 סטטוס אישי',
+    '',
+    isShiftActive(shift, now) ? 'המשמרת שלך פעילה עכשיו' : 'המשמרת הקרובה שלך',
+    '',
+    `🗓 ${formatBotShiftDate(shift.shift_date)}`,
+    `🕒 ${shift.start_time} - ${shift.end_time}`,
+    `📌 ${shift.title}${meta ? ` • ${meta}` : ''}`,
+    `📣 התגובה שלך: ${formatShiftStatus(shift.status)}`,
+  ];
+
+  if (shift.arrival_confirmed_at) {
+    lines.push('📍 הגעה אושרה: אתה מסומן במקום.');
+  } else if (shift.status === 'yes' && isArrivalConfirmationWindow(shift, now)) {
+    lines.push('📍 אפשר לאשר עכשיו שהגעת למקום.');
+  }
+
+  lines.push('', `⏱ ${getShiftLiveLabel(shift, now)}`);
+  return lines.join('\n');
+}
+
+async function sendStatus(chatId, telegramId) {
+  const user = await getApprovedUserByTelegramId(telegramId);
+
+  if (!user) {
+    await bot.sendMessage(chatId, 'כדי להשתמש בפקודה הזו צריך להיות משתמש מאושר במערכת.');
+    return;
+  }
+
+  const shifts = await getUserAssignedShifts(user.id);
+  const statusShift = pickStatusShift(shifts);
+  const options = {};
+
+  if (statusShift && !isShiftCompleted(statusShift)) {
+    options.reply_markup = buildShiftActionKeyboard(statusShift.id, {
+      includeArrival:
+        statusShift.status === 'yes' &&
+        !statusShift.arrival_confirmed_at &&
+        isArrivalConfirmationWindow(statusShift),
+    });
+  }
+
+  await bot.sendMessage(chatId, buildStatusText(user, statusShift), options);
+}
+
+async function markNotificationClicked(shiftId, userId) {
+  await run(
+    `
+    UPDATE shift_notification_log
+    SET clicked_at = COALESCE(clicked_at, CURRENT_TIMESTAMP)
+    WHERE shift_id = ?
+      AND user_id = ?
+      AND clicked_at IS NULL
+    `,
+    [shiftId, userId],
+    { skipBackup: true }
+  ).catch(() => {});
 }
 
 async function sendUserShiftsDigest(chatId, telegramId) {
@@ -585,6 +689,91 @@ async function sendDroneUpdateBroadcast() {
     sent,
     failed,
   };
+}
+
+async function buildNotificationHistoryText() {
+  const recentNotifications = await all(
+    `
+    SELECT
+      nl.notification_type,
+      nl.delivery_status,
+      nl.error_message,
+      nl.sent_at,
+      nl.clicked_at,
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      u.first_name,
+      u.last_name,
+      sa.status,
+      sa.responded_at,
+      sa.arrival_confirmed_at
+    FROM shift_notification_log nl
+    LEFT JOIN shifts s ON s.id = nl.shift_id
+    LEFT JOIN users u ON u.id = nl.user_id
+    LEFT JOIN shift_assignments sa ON sa.shift_id = nl.shift_id AND sa.user_id = nl.user_id
+    ORDER BY nl.sent_at DESC, nl.id DESC
+    LIMIT 15
+    `
+  ).catch(() => []);
+
+  const pendingRows = await all(
+    `
+    SELECT
+      s.title,
+      s.shift_date,
+      s.start_time,
+      s.end_time,
+      u.first_name,
+      u.last_name,
+      sa.status
+    FROM shift_assignments sa
+    JOIN shifts s ON s.id = sa.shift_id
+    JOIN users u ON u.id = sa.user_id
+    WHERE sa.status = 'pending'
+      AND datetime(s.shift_date || ' ' || s.start_time) >= datetime('now', '-1 day')
+    ORDER BY s.shift_date ASC, s.start_time ASC
+    LIMIT 10
+    `
+  ).catch(() => []);
+
+  const lines = [
+    '📨 היסטוריית התראות',
+    '',
+    '15 ההתראות האחרונות:',
+  ];
+
+  if (!recentNotifications.length) {
+    lines.push('אין עדיין התראות מתועדות.');
+  }
+
+  recentNotifications.forEach((row, index) => {
+    const name = [row.first_name, row.last_name].filter(Boolean).join(' ') || 'משתמש ללא שם';
+    const clicked = row.clicked_at || row.responded_at ? 'נלחץ' : 'לא נלחץ';
+    const response = row.responded_at ? formatShiftStatus(row.status) : 'לא ענה';
+    const arrival = row.arrival_confirmed_at ? 'הגעה אושרה' : 'ללא אישור הגעה';
+    const delivery = row.delivery_status === 'sent' ? 'נשלח' : `נכשל${row.error_message ? `: ${row.error_message}` : ''}`;
+
+    lines.push(
+      '',
+      `${index + 1}. ${delivery} • ${row.notification_type}`,
+      `${name} • ${row.title || 'משמרת'} • ${row.shift_date || ''} ${row.start_time || ''}-${row.end_time || ''}`,
+      `תגובה: ${response} • כפתור: ${clicked} • ${arrival}`
+    );
+  });
+
+  lines.push('', 'ממתינים לתגובה:');
+  if (!pendingRows.length) {
+    lines.push('אין כרגע משתמשים שממתינים לתגובה במשמרות הקרובות.');
+  } else {
+    pendingRows.forEach((row) => {
+      const name = [row.first_name, row.last_name].filter(Boolean).join(' ') || 'משתמש ללא שם';
+      lines.push(`• ${name} • ${row.title} • ${row.shift_date} ${row.start_time}-${row.end_time}`);
+    });
+  }
+
+  return lines.join('\n');
 }
 
 async function sendMainMenu(chatId, isApproved = false) {
@@ -841,6 +1030,35 @@ bot.onText(/\/myshifts/, async (msg) => {
   } catch (err) {
     console.error('/myshifts error:', err);
     await bot.sendMessage(msg.chat.id, 'לא הצלחנו לטעון את המשמרות כרגע.').catch(() => {});
+  }
+});
+
+bot.onText(/\/status/, async (msg) => {
+  try {
+    await sendStatus(msg.chat.id, String(msg.from.id));
+  } catch (err) {
+    console.error('/status error:', err);
+    await bot.sendMessage(msg.chat.id, 'לא הצלחנו לטעון את הסטטוס כרגע. נסה שוב בעוד רגע.').catch(() => {});
+  }
+});
+
+bot.onText(/\/notifications/, async (msg) => {
+  const chatId = msg.chat.id;
+  const requesterId = String(msg.from.id);
+
+  try {
+    await bootstrapAdmins();
+
+    const isAdmin = await isAdminByTelegramId(requesterId);
+    if (!isAdmin) {
+      await bot.sendMessage(chatId, 'אין לך הרשאה לבצע את הפעולה הזו.');
+      return;
+    }
+
+    await bot.sendMessage(chatId, await buildNotificationHistoryText());
+  } catch (err) {
+    console.error('/notifications error:', err);
+    await bot.sendMessage(chatId, 'לא הצלחנו לטעון את היסטוריית ההתראות כרגע.').catch(() => {});
   }
 });
 
@@ -1120,11 +1338,15 @@ bot.on('message', async (msg) => {
         await run(
           `
           UPDATE shift_assignments
-          SET status = 'no', comment = ?, responded_at = CURRENT_TIMESTAMP
+          SET status = 'no',
+              comment = ?,
+              responded_at = CURRENT_TIMESTAMP,
+              arrival_confirmed_at = NULL
           WHERE shift_id = ? AND user_id = ?
           `,
           [text, pendingReason.shift_id, user.id]
         );
+        await markNotificationClicked(pendingReason.shift_id, user.id);
       }
 
       await run(
@@ -1448,6 +1670,47 @@ bot.on('callback_query', async (query) => {
         `❌ ההרשמה שלך נדחתה.\nאפשר ללחוץ שוב על "${BOT_TEXT.menu.registerButton}" ולשלוח פרטים מחדש.`
       ).catch(() => {});
 
+      return;
+    }
+
+    if (data.startsWith('shift_arrived_')) {
+      const shiftId = data.replace('shift_arrived_', '');
+      const user = await get(
+        `SELECT * FROM users WHERE telegram_id = ?`,
+        [telegramId]
+      );
+
+      if (!user) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשתמש לא נמצא' });
+        return;
+      }
+
+      const shift = await getAssignedShiftForUser(user.id, shiftId);
+      if (!shift) {
+        await bot.answerCallbackQuery(query.id, { text: 'המשמרת לא נמצאה' });
+        return;
+      }
+
+      if (!isArrivalConfirmationWindow(shift, new Date())) {
+        await bot.answerCallbackQuery(query.id, { text: 'אישור הגעה זמין רק סביב תחילת המשמרת' });
+        return;
+      }
+
+      await run(
+        `
+        UPDATE shift_assignments
+        SET status = 'yes',
+            arrival_confirmed_at = COALESCE(arrival_confirmed_at, CURRENT_TIMESTAMP),
+            responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+            comment = ''
+        WHERE shift_id = ? AND user_id = ?
+        `,
+        [shiftId, user.id]
+      );
+
+      await markNotificationClicked(shiftId, user.id);
+      await bot.answerCallbackQuery(query.id, { text: 'הגעה אושרה' });
+      await replaceCallbackMessage(query, '📍 הגעה אושרה: אתה מסומן במקום.');
       return;
     }
 

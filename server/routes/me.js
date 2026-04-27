@@ -6,6 +6,7 @@ const {
   getShiftBounds,
   getShiftDurationHours,
   getShiftTimingSnapshot,
+  isArrivalConfirmationWindow,
   isShiftActive,
   isShiftCompleted,
 } = require('../shiftTiming');
@@ -146,6 +147,7 @@ async function getEnrichedUserShifts(userId) {
       sa.id AS assignment_id,
       sa.status,
       sa.responded_at,
+      sa.arrival_confirmed_at,
       sa.comment,
       s.id,
       s.title,
@@ -376,10 +378,13 @@ router.post('/shift-response', authMiddleware, async (req, res) => {
     await run(
       `
       UPDATE shift_assignments
-      SET status = ?, comment = ?, responded_at = CURRENT_TIMESTAMP
+      SET status = ?,
+          comment = ?,
+          responded_at = CURRENT_TIMESTAMP,
+          arrival_confirmed_at = CASE WHEN ? = 'yes' THEN arrival_confirmed_at ELSE NULL END
       WHERE shift_id = ? AND user_id = ?
       `,
-      [status, finalComment, shiftId, req.dbUser.id]
+      [status, finalComment, status, shiftId, req.dbUser.id]
     );
 
     const updatedShift = await get(
@@ -388,6 +393,7 @@ router.post('/shift-response', authMiddleware, async (req, res) => {
         sa.id AS assignment_id,
         sa.status,
         sa.responded_at,
+        sa.arrival_confirmed_at,
         sa.comment,
         s.id,
         s.title,
@@ -408,6 +414,57 @@ router.post('/shift-response', authMiddleware, async (req, res) => {
       success: true,
       shift: updatedShift || null,
     });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/shift-arrival', authMiddleware, async (req, res) => {
+  try {
+    if (!req.dbUser) {
+      return res.status(404).json({ error: 'המשתמש לא נמצא' });
+    }
+
+    if (req.dbUser.registration_status !== 'approved') {
+      return res.status(403).json({ error: 'ההרשמה טרם אושרה' });
+    }
+
+    const { shift_id: shiftId } = req.body;
+    const assignedShift = await get(
+      `
+      SELECT
+        s.id,
+        s.shift_date,
+        s.start_time,
+        s.end_time
+      FROM shift_assignments sa
+      JOIN shifts s ON s.id = sa.shift_id
+      WHERE sa.shift_id = ? AND sa.user_id = ?
+      `,
+      [shiftId, req.dbUser.id]
+    );
+
+    if (!assignedShift) {
+      return res.status(404).json({ error: 'המשמרת לא נמצאה' });
+    }
+
+    if (!isArrivalConfirmationWindow(assignedShift, new Date())) {
+      return res.status(400).json({ error: 'אישור הגעה זמין רק סביב תחילת המשמרת' });
+    }
+
+    await run(
+      `
+      UPDATE shift_assignments
+      SET status = 'yes',
+          arrival_confirmed_at = COALESCE(arrival_confirmed_at, CURRENT_TIMESTAMP),
+          responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+          comment = ''
+      WHERE shift_id = ? AND user_id = ?
+      `,
+      [shiftId, req.dbUser.id]
+    );
+
+    return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

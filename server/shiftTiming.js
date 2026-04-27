@@ -1,5 +1,8 @@
 const { ISRAEL_TIMEZONE, parseIsraelDateTime } = require('./timezone');
 
+const ARRIVAL_CONFIRMATION_BEFORE_START_MS = 20 * 60 * 1000
+const ARRIVAL_CONFIRMATION_AFTER_START_MS = 45 * 60 * 1000
+
 function parseShiftDateTime(shiftDate, time) {
   return parseIsraelDateTime(shiftDate, time);
 }
@@ -35,6 +38,15 @@ function isShiftCompleted(shift, now = new Date()) {
   return now >= end
 }
 
+function isArrivalConfirmationWindow(shift, now = new Date()) {
+  const { start } = getShiftBounds(shift)
+  const windowStart = start.getTime() - ARRIVAL_CONFIRMATION_BEFORE_START_MS
+  const windowEnd = start.getTime() + ARRIVAL_CONFIRMATION_AFTER_START_MS
+  const nowMs = now.getTime()
+
+  return nowMs >= windowStart && nowMs <= windowEnd
+}
+
 function getShiftTimingSnapshot(shift, now = new Date()) {
   const { start, end } = getShiftBounds(shift)
   const durationMs = Math.max(1, end.getTime() - start.getTime())
@@ -64,6 +76,7 @@ module.exports = {
   getShiftDurationMs,
   getShiftDurationHours,
   getShiftTimingSnapshot,
+  isArrivalConfirmationWindow,
   isShiftActive,
   isShiftCompleted,
   parseShiftDateTime,

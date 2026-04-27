@@ -1,0 +1,303 @@
+9950 Shifts Helper - summary of updates and features
+Updated: 2026-04-23
+
+1. General direction
+
+The project was updated without a full architectural rewrite.
+The main goals were:
+- improve UI/UX of the mini app;
+- unify time logic under Asia/Jerusalem;
+- improve bot usability and Hebrew localization;
+- add admin tools;
+- protect data from loss on Render;
+- add Excel-based shift import;
+- keep existing shifts, users and history safe.
+
+
+2. UI / UX updates
+
+The mini app interface was redesigned to be clearer and more mobile-oriented.
+
+Implemented:
+- improved visual hierarchy;
+- stronger emphasis on important actions and current shift info;
+- calmer styling for secondary labels and secondary actions;
+- cleaner spacing, grouping and readability;
+- unified style for cards, badges, statuses and action areas;
+- mobile-first polishing for Telegram Mini App full-screen usage;
+- sticky and more compact mobile header;
+- better safe-area spacing for phones;
+- denser and more practical layout for small screens.
+
+Additional UI improvements:
+- completed shifts are shown in a more compact and gray style;
+- active shift section is visually highlighted;
+- names in the "who is on shift now" tile were made larger;
+- global leaderboard was removed as unnecessary;
+- loading screen and in-app branding were switched to the new transparent PNG logo.
+
+
+3. Timezone and time logic
+
+All important time logic was unified around:
+- Asia/Jerusalem
+
+This includes:
+- time calculations;
+- shift timers;
+- active shift progress;
+- displayed time in the mini app;
+- reminders and notifications;
+- server-side current time references.
+
+What was done:
+- centralized timezone handling;
+- reduced inconsistent local/UTC behavior;
+- server now provides time reference for the client;
+- mini app uses server time snapshots to avoid device-local drift;
+- reminders and notifications were aligned with Israel time.
+
+
+4. Personal cabinet / active shift
+
+If a user currently has an active shift, the app now clearly shows:
+- how long the shift has already been running;
+- what percent of the planned shift duration has passed;
+- progress bar / active status visualization.
+
+Behavior:
+- updates correctly over time;
+- does not break when there is no active shift;
+- uses planned shift duration for percentage calculation.
+
+
+5. Hebrew localization
+
+Bot responses and user-facing command texts were localized to Hebrew.
+
+Updated:
+- /help
+- /thanks
+- admin and system messages
+- prompts
+- notices
+- confirmations
+- errors where user sees them
+
+The /help command was also rewritten to be clearer, more structured and more readable.
+
+
+6. Bot commands and communication features
+
+Current notable bot commands/features:
+- /start - reopen the bot and main menu
+- /help - structured Hebrew help center
+- /thanks - ready-made thank-you message
+- /homescreen - sends instructions and video on how to add the mini app to the home screen
+- /template - admin-only Excel template download for shift import
+- /broadcast MESSAGE - admin-only mass message to all registered users
+- /addadmin TELEGRAM_ID - grant admin access
+- /removeadmin TELEGRAM_ID - revoke admin access
+
+Broadcast:
+- admin-only;
+- sends custom message to all approved registered users;
+- does not require DB schema breakage.
+
+Homescreen guidance:
+- bot can send the guide video for adding the mini app to the device home screen.
+
+
+7. Main screen additions
+
+The main entry screen now also includes a tile showing who is currently on shift.
+
+This tile:
+- shows active people from the server;
+- highlights names clearly;
+- is read-only;
+- does not modify shift data.
+
+
+8. Excel import of shifts
+
+Admin can batch upload shifts via Excel.
+
+Implemented:
+- template-based import;
+- preview before final import;
+- validation;
+- duplicate protection;
+- partial import for valid rows even if some rows are invalid;
+- import result log.
+
+Excel format:
+- date
+- start_time
+- end_time
+- title
+- shift_type
+- location
+- notes
+
+Required:
+- date
+- start_time
+- end_time
+- title
+
+Validation includes:
+- required fields check;
+- date/time validation;
+- duplicate detection;
+- row-level error reporting.
+
+Preview shows:
+- how many rows are ready;
+- how many have errors;
+- how many are duplicates;
+- how many are empty/skipped.
+
+Excel template:
+- downloadable from the admin flow;
+- downloadable from the bot via /template;
+- contains correct columns and example usage.
+
+Additional improvement:
+- import parsing was fixed for the real template structure so header rows and helper rows are skipped correctly.
+
+
+9. Import logs cleanup
+
+Admin can now clean the list of uploaded/imported Excel log entries.
+
+Important:
+- this removes only import log entries;
+- this does NOT delete shifts themselves;
+- this does NOT delete users;
+- this does NOT affect history outside the import log.
+
+
+10. Admin area improvements
+
+Admin zone received several fixes and improvements:
+- safer loading flow;
+- screen opens before all secondary admin data fully hydrates;
+- partial loading failures do not blank the whole admin screen;
+- runtime crash in admin shift cards was fixed;
+- import log area improved.
+
+
+11. Data safety and storage
+
+A major priority was preventing loss of users and shift data.
+
+Key decisions:
+- no destructive migrations were introduced;
+- schema changes were additive where needed;
+- existing users/shifts/history were not intentionally removed;
+- SQLite backup logic was preserved and improved;
+- project was prepared for persistent storage on Render.
+
+Render storage strategy:
+- DB should live on persistent disk;
+- recommended mount path: /var/data
+- DB_STORAGE_DIR=/var/data/sqlite
+- DB_BACKUP_DIR=/var/data/sqlite-backups
+
+There is also support/scripts for restoring known approved users safely via idempotent upsert behavior.
+
+
+12. User restoration and admin identity changes
+
+Done in the project flow:
+- previously registered users from backup information were restored;
+- restored users were approved;
+- admin profile was updated to:
+  איליה גולדפרב
+  0526042668
+
+
+13. Mini app cache / deployment behavior
+
+To reduce stale Telegram Mini App caching issues:
+- entry-point caching behavior was improved;
+- build/version visibility was added in the app;
+- versioned app URLs were used where needed to break stale webview cache;
+- however, BotFather should keep the stable base URL unless domain/path changes.
+
+Recommended BotFather Mini App URL:
+- https://9950-shifts-helper.vercel.app/
+
+Important rule:
+- BotFather URL only needs updating if domain, path or entrypoint changes.
+- Ordinary UI or logic updates do not require changing BotFather.
+
+
+14. Logo and branding updates
+
+Updated:
+- old logo usage was replaced with the new transparent PNG version;
+- loading screen branding was updated;
+- brand lockups across the app were switched to the new asset.
+
+
+15. Removed / reverted features
+
+Removed:
+- global leaderboard / world top by hours
+
+Reason:
+- it was considered unnecessary clutter for this app.
+
+
+16. Files and architectural areas touched over time
+
+The project work included updates across:
+- web/src/App.jsx
+- web/src/index.css
+- web/index.html
+- web/vercel.json
+- web/vite.config.js
+- web/public assets
+- server/bot.js
+- server/i18n/he.js
+- server/routes/me.js
+- server/routes/admin.js
+- server/routes related to shifts and profile
+- server/timezone.js
+- server/shiftTiming.js
+- server/shiftReminders.js
+- server/shiftNotifications.js
+- server/database.js
+- server/dbUtils.js
+- render.yaml
+- tools/restore-approved-users.mjs
+- template/build helper files for Excel import
+
+
+17. Notes for future work
+
+Recommended operational practices:
+- keep Render persistent disk enabled;
+- do not rely on ephemeral SQLite storage;
+- before major changes, avoid touching server/db/app.db in git;
+- if Mini App URL base ever changes, update BotFather explicitly;
+- continue using additive migrations only.
+
+
+18. Short operational summary
+
+What the system now supports:
+- Hebrew bot usage
+- improved mobile mini app UI
+- accurate Israel timezone behavior
+- active shift timer and progress
+- admin broadcast to all users
+- current on-shift people tile
+- Excel shift import with preview and template
+- import log cleanup
+- persistent storage-oriented deployment setup
+- safer admin screen behavior
+- updated logo and branded loading state
+

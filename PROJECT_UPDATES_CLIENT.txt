@@ -1,0 +1,128 @@
+9950 Shifts Helper
+Client summary
+Updated: 2026-04-23
+
+What was improved
+
+The system was noticeably upgraded without breaking the existing working logic.
+The main focus was clarity, convenience, correct time handling and safer data storage.
+
+
+1. Mini app interface became clearer and more modern
+
+The app was visually cleaned up and made easier to understand.
+
+Updated:
+- clearer visual hierarchy;
+- more noticeable important actions and statuses;
+- calmer presentation of secondary information;
+- cleaner cards, blocks, badges and buttons;
+- improved spacing and readability;
+- better adaptation for phone screens and Telegram Mini App full-screen mode.
+
+The result:
+- the app feels cleaner, simpler and more intuitive;
+- it works better specifically on mobile, which is its main usage scenario.
+
+
+2. Time now works correctly by Israel time
+
+All core time logic was aligned to:
+- Asia/Jerusalem
+
+This means:
+- shift times are calculated correctly;
+- reminders and notifications are tied to Israel time;
+- active shift timers and progress are shown correctly;
+- displayed time is consistent and no longer behaves randomly.
+
+
+3. Active shift is shown much more clearly
+
+If a user is currently on shift, the personal screen now clearly shows:
+- how long the shift has already been running;
+- what percent of the shift has passed;
+- a visual progress indicator.
+
+This makes it much easier to understand the current shift status at a glance.
+
+
+4. Bot language and texts were improved
+
+User-facing bot communication was moved to Hebrew and cleaned up.
+
+This includes:
+- help messages;
+- prompts;
+- statuses;
+- errors;
+- confirmations;
+- useful command descriptions.
+
+The /help command was also rewritten in a more readable and structured way.
+
+
+5. Admin features were expanded
+
+Admin now has more practical tools inside the system.
+
+Added:
+- mass message sending to all registered users;
+- Excel-based shift import;
+- downloadable Excel template;
+- import preview before final confirmation;
+- import log;
+- ability to clear import log entries when needed.
+
+Important:
+- clearing the import log does not delete shifts or users.
+
+
+6. Excel import was added
+
+Shifts can now be uploaded in batches from Excel.
+
+The system supports:
+- validation of rows;
+- duplicate protection;
+- readable errors;
+- import preview;
+- partial success if only part of the file is valid.
+
+This makes schedule loading much faster and easier for the admin.
+
+
+7. Main screen was improved
+
+The main screen now also shows who is currently on shift.
+
+This helps users immediately see the current active people without opening deeper sections.
+
+
+8. Data safety was strengthened
+
+One of the most important parts of the work was protecting existing data.
+
+The system was adjusted so that:
+- users do not disappear after ordinary updates;
+- shifts and saved information are not wiped by code changes;
+- storage is oriented toward persistent disk usage on Render;
+- updates can be made without resetting the database.
+
+
+9. Branding and polish
+
+The app now uses the updated logo and a more polished loading experience.
+Visual presentation was cleaned up across the app for a more professional feel.
+
+
+10. Overall result
+
+The project is now:
+- clearer to use;
+- better suited for phone usage;
+- more stable in time-related behavior;
+- more convenient for admin work;
+- safer in terms of data preservation;
+- more polished both in the bot and in the mini app.
+

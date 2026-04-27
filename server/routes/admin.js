@@ -399,9 +399,10 @@ router.get('/shifts/:id', authMiddleware, adminMiddleware, async (req, res) => {
         u.last_name,
         u.rank,
         u.service_type,
-        sa.status,
-        sa.comment,
-        sa.responded_at
+      sa.status,
+      sa.comment,
+      sa.responded_at,
+      sa.arrival_confirmed_at
       FROM shift_assignments sa
       JOIN users u ON u.id = sa.user_id
       WHERE sa.shift_id = ?
@@ -906,11 +907,12 @@ router.patch('/shifts/:shiftId/assignments/:userId/status', authMiddleware, admi
       SET
         status = ?,
         comment = ?,
-        responded_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+        responded_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END,
+        arrival_confirmed_at = CASE WHEN ? = 'yes' THEN arrival_confirmed_at ELSE NULL END
       WHERE shift_id = ?
         AND user_id = ?
       `,
-      [status, comment, status, shift.id, userId]
+      [status, comment, status, status, shift.id, userId]
     );
 
     return res.json({ success: true });

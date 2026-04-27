@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS shift_assignments (
     user_id INTEGER NOT NULL,
     status TEXT DEFAULT 'pending',
     responded_at DATETIME,
+    arrival_confirmed_at DATETIME,
     comment TEXT,
     FOREIGN KEY (shift_id) REFERENCES shifts(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -64,6 +65,10 @@ CREATE TABLE IF NOT EXISTS shift_notification_log (
     shift_id INTEGER NOT NULL,
     user_id INTEGER NOT NULL,
     related_shift_id INTEGER,
+    recipient_telegram_id TEXT,
+    delivery_status TEXT NOT NULL DEFAULT 'sent',
+    error_message TEXT,
+    clicked_at DATETIME,
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
