@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { parseShiftImportWorkbook } from './importWorkbook'
 import AdminAssignedPersonCard from './components/AdminAssignedPersonCard'
 import ActiveNowCard from './components/ActiveNowCard'
+import ShiftMissionDrone from './components/ShiftMissionDrone'
 
 const FALLBACK_API_BASE = 'https://nine950-backend.onrender.com'
 const LOGO_SRC = '/logo-shifts-transparent.png'
@@ -1761,7 +1762,13 @@ export default function App() {
   }
 
   function renderActiveNowCard() {
-    return <ActiveNowCard activeNow={activeNow} personName={personName} />
+    return (
+      <ActiveNowCard
+        activeNow={activeNow}
+        personName={personName}
+        onOpenMission={(shift) => setOverlay({ type: 'fpv-mission', shift })}
+      />
+    )
   }
 
   return (
@@ -2075,9 +2082,35 @@ export default function App() {
       {overlay ? (
         <div className="overlay-backdrop" onClick={() => setOverlay(null)}>
           <div
-            className={`overlay-panel ${overlay.type === 'shift-details' || overlay.type === 'assign-users' ? 'overlay-panel-wide' : ''}`}
+            className={`overlay-panel ${overlay.type === 'shift-details' || overlay.type === 'assign-users' || overlay.type === 'fpv-mission' ? 'overlay-panel-wide' : ''}`}
             onClick={(event) => event.stopPropagation()}
           >
+            {overlay.type === 'fpv-mission' ? (
+              <>
+                <div className="overlay-header">
+                  <div>
+                    <div className="eyebrow">FPV SHIFT MISSION</div>
+                    <div className="overlay-title">
+                      {overlay.shift?.people?.map((person) => personName(person)).join(' · ') || 'Mission crew'}
+                    </div>
+                    <div className="subtitle">
+                      {overlay.shift?.shift_date} · {overlay.shift?.start_time} - {overlay.shift?.end_time}
+                    </div>
+                  </div>
+                  <button className="overlay-close" onClick={() => setOverlay(null)}>×</button>
+                </div>
+
+                <ShiftMissionDrone
+                  shift={overlay.shift}
+                  personName={personName}
+                />
+
+                <div className="overlay-actions-bar">
+                  <button className="secondary" onClick={() => setOverlay(null)}>סגור</button>
+                </div>
+              </>
+            ) : null}
+
             {overlay.type === 'decline-reason' ? (
               <>
                 <div className="overlay-header">

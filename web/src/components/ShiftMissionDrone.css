@@ -1,0 +1,485 @@
+.shift-mission {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  width: 100%;
+  color: #e8f8ff;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  background:
+    radial-gradient(circle at 82% 45%, rgba(20, 184, 166, 0.18), transparent 24%),
+    linear-gradient(135deg, #071526 0%, #0d2740 44%, #14273a 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 22px 54px rgba(15, 23, 42, 0.28);
+}
+
+.shift-mission-compact {
+  min-height: 152px;
+  padding: 0;
+  border-radius: 22px;
+  cursor: pointer;
+  text-align: right;
+}
+
+.shift-mission-full {
+  min-height: min(72vh, 640px);
+  border-radius: 28px;
+}
+
+.mission-sky,
+.mission-drone-track,
+.mission-hud,
+.mission-complete {
+  position: absolute;
+  inset: 0;
+}
+
+.mission-sky {
+  z-index: 0;
+  background:
+    linear-gradient(180deg, rgba(56, 189, 248, 0.18), transparent 42%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+
+.mission-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(125, 211, 252, 0.09) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(125, 211, 252, 0.08) 1px, transparent 1px);
+  background-size: 52px 52px;
+  mask-image: linear-gradient(180deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+.mission-scanline {
+  position: absolute;
+  inset: -30% 0 auto 0;
+  height: 30%;
+  background: linear-gradient(180deg, transparent, rgba(125, 211, 252, 0.16), transparent);
+  animation: missionScan 4.8s linear infinite;
+}
+
+.mission-cloud,
+.mission-ridge {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+}
+
+.mission-cloud {
+  width: 148px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(226, 246, 255, 0.18);
+  filter: blur(0.4px);
+  animation: missionCloud 18s linear infinite;
+}
+
+.cloud-a {
+  top: 18%;
+  left: 70%;
+}
+
+.cloud-b {
+  top: 34%;
+  left: 28%;
+  width: 104px;
+  opacity: 0.55;
+  animation-duration: 24s;
+}
+
+.cloud-c {
+  top: 12%;
+  left: 8%;
+  width: 86px;
+  opacity: 0.4;
+  animation-duration: 30s;
+}
+
+.mission-ridge {
+  inset: auto -10% 0 -10%;
+  height: 34%;
+  background:
+    linear-gradient(135deg, transparent 0 22%, rgba(8, 47, 73, 0.82) 22% 34%, transparent 34%),
+    linear-gradient(45deg, transparent 0 18%, rgba(15, 118, 110, 0.5) 18% 32%, transparent 32%);
+  background-size: 220px 100%, 280px 100%;
+  opacity: 0.9;
+  animation: missionRidge 14s linear infinite;
+}
+
+.ridge-b {
+  height: 24%;
+  opacity: 0.38;
+  filter: blur(2px);
+  animation-duration: 22s;
+}
+
+.mission-target {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 8%;
+  width: 54px;
+  height: 54px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  border: 1px solid rgba(45, 212, 191, 0.58);
+  box-shadow:
+    0 0 calc(18px * var(--target-pulse)) rgba(45, 212, 191, 0.72),
+    inset 0 0 18px rgba(45, 212, 191, 0.18);
+}
+
+.mission-target::before,
+.mission-target::after,
+.mission-target span {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+}
+
+.mission-target::before {
+  width: 86px;
+  height: 86px;
+  border: 1px dashed rgba(45, 212, 191, 0.34);
+  animation: targetPulse 1.8s ease-in-out infinite;
+}
+
+.mission-target::after {
+  width: 8px;
+  height: 8px;
+  background: #5eead4;
+  box-shadow: 0 0 18px #5eead4;
+}
+
+.mission-target span {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(94, 234, 212, 0.7);
+}
+
+.mission-drone-track {
+  z-index: 3;
+  pointer-events: none;
+}
+
+.mission-drone {
+  position: absolute;
+  top: 50%;
+  left: var(--drone-left);
+  width: 118px;
+  height: 82px;
+  transform: translate(-50%, -50%);
+  animation: droneFloat 2.4s ease-in-out infinite;
+}
+
+.mission-drone-compact {
+  width: 74px;
+  height: 52px;
+}
+
+.drone-body,
+.drone-arm,
+.drone-prop,
+.drone-camera {
+  position: absolute;
+  display: block;
+}
+
+.drone-body {
+  inset: 30% 32%;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f8fafc, #7dd3fc 48%, #0ea5e9);
+  box-shadow: 0 8px 22px rgba(14, 165, 233, 0.34);
+}
+
+.drone-camera {
+  left: 50%;
+  bottom: -8px;
+  width: 16px;
+  height: 12px;
+  border-radius: 8px 8px 10px 10px;
+  transform: translateX(-50%);
+  background: #082f49;
+  box-shadow: inset 0 -2px 0 rgba(125, 211, 252, 0.6);
+}
+
+.drone-arm {
+  top: 48%;
+  left: 14%;
+  right: 14%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.88);
+  transform-origin: center;
+}
+
+.arm-a {
+  transform: rotate(18deg);
+}
+
+.arm-b {
+  transform: rotate(-18deg);
+}
+
+.drone-prop {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(226, 246, 255, 0.7);
+  box-shadow: 0 0 18px rgba(125, 211, 252, 0.44);
+  animation: propSpin 0.38s linear infinite;
+}
+
+.mission-drone-compact .drone-prop {
+  width: 18px;
+  height: 18px;
+}
+
+.prop-a {
+  top: 8%;
+  left: 4%;
+}
+
+.prop-b {
+  top: 8%;
+  right: 4%;
+}
+
+.prop-c {
+  bottom: 8%;
+  left: 4%;
+}
+
+.prop-d {
+  bottom: 8%;
+  right: 4%;
+}
+
+.mission-hud {
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+  pointer-events: none;
+}
+
+.shift-mission-compact .mission-hud {
+  padding: 16px;
+}
+
+.mission-hud-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.mission-kicker {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(186, 230, 253, 0.76);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.mission-hud strong {
+  display: block;
+  max-width: 440px;
+  color: #f8fafc;
+  font-size: clamp(22px, 4vw, 42px);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-shadow: 0 0 24px rgba(14, 165, 233, 0.36);
+}
+
+.shift-mission-compact .mission-hud strong {
+  max-width: 68%;
+  font-size: 18px;
+}
+
+.mission-status {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #ccfbf1;
+  background: rgba(20, 184, 166, 0.18);
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.mission-status.complete {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(251, 191, 36, 0.44);
+}
+
+.mission-hud-grid,
+.mission-compact-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.mission-hud-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 720px);
+}
+
+.mission-hud-grid span,
+.mission-compact-meta span {
+  border: 1px solid rgba(186, 230, 253, 0.18);
+  background: rgba(3, 7, 18, 0.28);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: rgba(226, 246, 255, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.mission-hud-grid strong {
+  margin-top: 3px;
+  font-size: 17px;
+  letter-spacing: 0;
+}
+
+.mission-compact-meta {
+  grid-template-columns: repeat(3, max-content);
+  justify-content: start;
+}
+
+.mission-compact-meta span {
+  padding: 6px 8px;
+  font-size: 10px;
+}
+
+.mission-complete {
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.2), transparent 44%);
+  pointer-events: none;
+  animation: completeFlash 1.8s ease-out both;
+}
+
+.mission-complete span {
+  padding: 14px 18px;
+  border-radius: 999px;
+  color: #fef3c7;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  font-size: clamp(18px, 4vw, 36px);
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  box-shadow: 0 0 44px rgba(251, 191, 36, 0.34);
+}
+
+@keyframes droneFloat {
+  0%, 100% {
+    translate: 0 -4px;
+    rotate: -1deg;
+  }
+  50% {
+    translate: 0 5px;
+    rotate: 1.4deg;
+  }
+}
+
+@keyframes propSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes missionCloud {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-260px);
+  }
+}
+
+@keyframes missionRidge {
+  to {
+    background-position: -220px 0, -280px 0;
+  }
+}
+
+@keyframes missionScan {
+  to {
+    transform: translateY(440%);
+  }
+}
+
+@keyframes targetPulse {
+  0%, 100% {
+    scale: 0.92;
+    opacity: 0.32;
+  }
+  50% {
+    scale: calc(1 + var(--target-pulse) * 0.18);
+    opacity: 0.78;
+  }
+}
+
+@keyframes completeFlash {
+  0% {
+    opacity: 0;
+    scale: 0.94;
+  }
+  28% {
+    opacity: 1;
+    scale: 1.02;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .shift-mission-full {
+    min-height: 520px;
+    border-radius: 22px;
+  }
+
+  .mission-hud {
+    padding: 18px;
+  }
+
+  .mission-hud-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mission-drone {
+    width: 88px;
+    height: 64px;
+  }
+
+  .mission-target {
+    right: 5%;
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mission-drone,
+  .drone-prop,
+  .mission-cloud,
+  .mission-ridge,
+  .mission-scanline,
+  .mission-target::before,
+  .mission-complete {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

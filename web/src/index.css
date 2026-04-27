@@ -972,6 +972,10 @@ code {
   gap: 12px;
 }
 
+.mode-card-status .shift-mission-compact {
+  margin-top: 2px;
+}
+
 .mode-card-status .mode-card-list-item {
   padding: 0;
   border: 0;
@@ -1032,6 +1036,22 @@ code {
   font-weight: 800;
   line-height: 1.45;
   color: var(--text);
+}
+
+.mode-card .shift-mission strong,
+.mode-card .shift-mission span {
+  color: inherit;
+  line-height: inherit;
+}
+
+.mode-card .shift-mission .mission-hud strong {
+  color: #f8fafc;
+}
+
+.mode-card .shift-mission .mission-kicker,
+.mode-card .shift-mission .mission-status,
+.mode-card .shift-mission .mission-compact-meta span {
+  line-height: 1.2;
 }
 
 .notice-root {
@@ -1507,6 +1527,10 @@ code {
 
   .mode-card-status .mode-card-active-names {
     font-size: 20px;
+  }
+
+  .mode-card-status .shift-mission-compact {
+    min-height: 138px;
   }
 
   .mode-card-list {
