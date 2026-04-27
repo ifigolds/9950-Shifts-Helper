@@ -581,6 +581,66 @@ async function ensureUserNotRegisterTwice(telegramId) {
   return user;
 }
 
+async function getRegistrationSession(telegramId) {
+  return get(
+    `
+    SELECT
+      step,
+      temp_first_name AS first_name,
+      temp_last_name AS last_name,
+      temp_phone AS phone,
+      temp_rank AS rank,
+      temp_service_type AS service_type
+    FROM registration_sessions
+    WHERE telegram_id = ?
+    ORDER BY updated_at DESC, id DESC
+    LIMIT 1
+    `,
+    [String(telegramId)]
+  );
+}
+
+async function saveRegistrationSession(telegramId, session) {
+  sessions[String(telegramId)] = session;
+
+  await run(
+    `DELETE FROM registration_sessions WHERE telegram_id = ?`,
+    [String(telegramId)]
+  );
+
+  await run(
+    `
+    INSERT INTO registration_sessions (
+      telegram_id,
+      step,
+      temp_first_name,
+      temp_last_name,
+      temp_phone,
+      temp_rank,
+      temp_service_type
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      String(telegramId),
+      session.step,
+      session.first_name || '',
+      session.last_name || '',
+      session.phone || '',
+      session.rank || '',
+      session.service_type || '',
+    ]
+  );
+}
+
+async function clearRegistrationSession(telegramId) {
+  delete sessions[String(telegramId)];
+  await run(
+    `DELETE FROM registration_sessions WHERE telegram_id = ?`,
+    [String(telegramId)]
+  );
+}
+
 // ================= START =================
 
 bot.onText(/\/start/, async (msg) => {
@@ -643,10 +703,12 @@ bot.onText(/\/start/, async (msg) => {
 
     if (user?.registration_status === 'rejected') {
       await bot.sendMessage(chatId, '❌ ההרשמה הקודמת נדחתה. אפשר להירשם מחדש.');
+      await clearRegistrationSession(telegramId);
       await sendMainMenu(chatId, false);
       return;
     }
 
+    await clearRegistrationSession(telegramId);
     await bot.sendMessage(chatId, '🚀 מוכן להתחיל?');
     await sendMainMenu(chatId, false);
   } catch (err) {
@@ -907,9 +969,9 @@ bot.on('message', async (msg) => {
     await bootstrapAdmins();
     await updateUsernameFromMessage(msg);
 
-    const session = sessions[telegramId];
+    const runtimeSession = sessions[telegramId];
 
-    if (session?.step === 'broadcast_message') {
+    if (runtimeSession?.step === 'broadcast_message') {
       const isAdmin = await isAdminByTelegramId(telegramId);
 
       if (!isAdmin) {
@@ -1029,19 +1091,20 @@ bot.on('message', async (msg) => {
         return;
       }
 
-      sessions[telegramId] = {
-        step: 'first_name'
-      };
+      await saveRegistrationSession(telegramId, { step: 'first_name' });
 
       await bot.sendMessage(chatId, 'הכנס שם פרטי:');
       return;
     }
+
+    const session = runtimeSession || await getRegistrationSession(telegramId);
 
     if (!session) return;
 
     if (session.step === 'first_name') {
       session.first_name = text;
       session.step = 'last_name';
+      await saveRegistrationSession(telegramId, session);
       await bot.sendMessage(chatId, 'הכנס שם משפחה:');
       return;
     }
@@ -1049,6 +1112,7 @@ bot.on('message', async (msg) => {
     if (session.step === 'last_name') {
       session.last_name = text;
       session.step = 'phone';
+      await saveRegistrationSession(telegramId, session);
       await bot.sendMessage(chatId, 'הכנס מספר טלפון:');
       return;
     }
@@ -1056,6 +1120,7 @@ bot.on('message', async (msg) => {
     if (session.step === 'phone') {
       session.phone = text;
       session.step = 'rank';
+      await saveRegistrationSession(telegramId, session);
       await bot.sendMessage(
         chatId,
         'בחר דרגה:',
@@ -1082,6 +1147,7 @@ bot.on('message', async (msg) => {
 
       session.rank = text;
       session.step = 'service_type';
+      await saveRegistrationSession(telegramId, session);
 
       await bot.sendMessage(
         chatId,
@@ -1146,7 +1212,7 @@ bot.on('message', async (msg) => {
         [telegramId]
       );
 
-      delete sessions[telegramId];
+      await clearRegistrationSession(telegramId);
 
       await bot.sendMessage(
         chatId,
