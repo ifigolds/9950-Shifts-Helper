@@ -138,7 +138,7 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
         <span className="route-dot route-mid" />
         <span className="route-dot route-end" />
         <span className="route-label route-label-start">תחילת המשמרת</span>
-        <span className="route-label route-label-now">כאן הדрон עכשיו</span>
+        <span className="route-label route-label-now">כאן הרחפן עכשיו</span>
         <span className="route-label route-label-end">סיום</span>
       </div>
 

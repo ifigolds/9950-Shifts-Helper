@@ -7,9 +7,12 @@ export default function AdminAssignedPersonCard({
   copyText,
   onUnassign,
   unassigningKey,
+  onStatusChange,
+  statusUpdatingKey,
 }) {
   const personKey = `${person.user_id}-${index}`
   const isUnassigning = unassigningKey === personKey
+  const isStatusUpdating = statusUpdatingKey === personKey
 
   return (
     <div className="list-item person-card">
@@ -28,6 +31,40 @@ export default function AdminAssignedPersonCard({
           <div className="list-sub">{person.comment}</div>
         </div>
       ) : null}
+
+      <div className="note-box admin-status-box">
+        <div className="label">עדכון הגעה על ידי מנהל</div>
+        <div className="actions compact-actions">
+          <button
+            className="success"
+            disabled={isStatusUpdating || person.status === 'yes'}
+            onClick={() => onStatusChange(person, personKey, 'yes')}
+          >
+            מגיע
+          </button>
+          <button
+            className="warning"
+            disabled={isStatusUpdating || person.status === 'maybe'}
+            onClick={() => onStatusChange(person, personKey, 'maybe')}
+          >
+            לא בטוח
+          </button>
+          <button
+            className="danger"
+            disabled={isStatusUpdating || person.status === 'no'}
+            onClick={() => onStatusChange(person, personKey, 'no')}
+          >
+            לא מגיע
+          </button>
+          <button
+            className="secondary"
+            disabled={isStatusUpdating || person.status === 'pending'}
+            onClick={() => onStatusChange(person, personKey, 'pending')}
+          >
+            ממתין
+          </button>
+        </div>
+      </div>
 
       <div className="actions compact-actions">
         {person.username || person.phone ? (

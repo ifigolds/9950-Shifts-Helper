@@ -375,6 +375,7 @@ export default function App() {
   const [overlayUsers, setOverlayUsers] = useState([])
   const [selectedUserIds, setSelectedUserIds] = useState([])
   const [unassigningKey, setUnassigningKey] = useState('')
+  const [statusUpdatingKey, setStatusUpdatingKey] = useState('')
   const importInputRef = useRef(null)
 
   const timezoneLabel = profile?.timezone || ISRAEL_TIMEZONE
@@ -963,6 +964,7 @@ export default function App() {
     try {
       setError('')
       setUnassigningKey('')
+      setStatusUpdatingKey('')
       const shift = getShiftById(shiftId)
       const data = await api(`/admin/shifts/${shiftId}`)
       setOverlayPeople(data.people || [])
@@ -1092,6 +1094,37 @@ export default function App() {
       setError(err.message || 'שגיאה בהסרת המשתמש מהמשמרת')
     } finally {
       setUnassigningKey('')
+    }
+  }
+
+  async function updateAssignedPersonStatus(person, personKey, status) {
+    if (!overlay?.shift || !person?.user_id) return
+
+    const statusLabels = {
+      yes: 'מגיע',
+      maybe: 'לא בטוח',
+      no: 'לא מגיע',
+      pending: 'ממתין',
+    }
+
+    try {
+      setError('')
+      setStatusUpdatingKey(personKey)
+
+      await api(`/admin/shifts/${overlay.shift.id}/assignments/${person.user_id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status,
+          comment: status === 'pending' ? '' : `עודכן על ידי מנהל: ${statusLabels[status]}`,
+        }),
+      })
+
+      await loadAdminShifts()
+      await openShiftDetailsOverlay(overlay.shift.id)
+    } catch (err) {
+      setError(err.message || 'שגיאה בעדכון סטטוס ההגעה')
+    } finally {
+      setStatusUpdatingKey('')
     }
   }
 
@@ -1662,6 +1695,8 @@ export default function App() {
         copyText={copyText}
         onUnassign={unassignUserFromShift}
         unassigningKey={unassigningKey}
+        onStatusChange={updateAssignedPersonStatus}
+        statusUpdatingKey={statusUpdatingKey}
       />
     )
   }

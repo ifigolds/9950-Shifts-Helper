@@ -642,6 +642,15 @@ code {
   background: rgba(248, 250, 252, 0.9);
 }
 
+.admin-status-box {
+  background: linear-gradient(180deg, rgba(239, 247, 255, 0.96), rgba(248, 250, 252, 0.92));
+  border-color: rgba(20, 121, 211, 0.14);
+}
+
+.admin-status-box .compact-actions {
+  margin-top: 10px;
+}
+
 .handover-box {
   background: linear-gradient(180deg, rgba(240, 248, 255, 0.95), rgba(248, 251, 255, 0.92));
 }
