@@ -42,6 +42,16 @@ const RANK_OPTIONS = [
   'רב-סרן'
 ];
 
+const FAVORITE_COLOR_OPTIONS = [
+  { key: 'sky', label: 'כחול שמיים', button: '🔵 כחול' },
+  { key: 'mint', label: 'ירוק מנטה', button: '🟢 מנטה' },
+  { key: 'amber', label: 'זהב', button: '🟡 זהב' },
+  { key: 'rose', label: 'ורוד', button: '🔴 ורוד' },
+  { key: 'violet', label: 'סגול', button: '🟣 סגול' },
+];
+
+const FAVORITE_COLOR_KEYS = new Set(FAVORITE_COLOR_OPTIONS.map((option) => option.key));
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -514,6 +524,69 @@ async function sendAdminBroadcast(messageText) {
   };
 }
 
+function getFavoriteColorOption(colorKey) {
+  return FAVORITE_COLOR_OPTIONS.find((option) => option.key === colorKey) || null;
+}
+
+function buildFavoriteColorKeyboard() {
+  return {
+    inline_keyboard: [
+      FAVORITE_COLOR_OPTIONS.slice(0, 3).map((option) => ({
+        text: option.button,
+        callback_data: `favorite_color_${option.key}`,
+      })),
+      FAVORITE_COLOR_OPTIONS.slice(3).map((option) => ({
+        text: option.button,
+        callback_data: `favorite_color_${option.key}`,
+      })),
+    ],
+  };
+}
+
+function buildDroneUpdateMessage() {
+  return [
+    '🚁 עדכון חדש במערכת 9950',
+    '',
+    'הוספנו תצוגת FPV חדשה למשמרת פעילה:',
+    '• במסך הראשי רואים מי נמצא עכשיו במשמרת.',
+    '• לחיצה על הכרטיס פותחת מסך רחפן מלא.',
+    '• הרחפן מתקדם לפי הזמן האמיתי של המשמרת.',
+    '• במסך המלא אפשר להפעיל מוזיקת לופיי רגועה.',
+    '',
+    'בחר/י צבע אהוב לרחפן שלך:',
+    'הצבע יישמר בפרופיל שלך, ובמשמרות שלך הרחפן יוצג בצבע שבחרת.',
+  ].join('\n');
+}
+
+async function sendDroneUpdateBroadcast() {
+  const recipients = await getBroadcastRecipients();
+  let sent = 0;
+  let failed = 0;
+
+  for (const recipient of recipients) {
+    try {
+      await bot.sendMessage(
+        recipient.telegram_id,
+        buildDroneUpdateMessage(),
+        {
+          reply_markup: buildFavoriteColorKeyboard(),
+        }
+      );
+      sent += 1;
+      await delay(35);
+    } catch (error) {
+      failed += 1;
+      console.error('sendDroneUpdateBroadcast error:', recipient.telegram_id, error.message);
+    }
+  }
+
+  return {
+    total: recipients.length,
+    sent,
+    failed,
+  };
+}
+
 async function sendMainMenu(chatId, isApproved = false) {
   const keyboard = isApproved
     ? [
@@ -865,6 +938,30 @@ bot.onText(/\/broadcast(?:\s+([\s\S]+))?/, async (msg, match) => {
   } catch (err) {
     console.error('/broadcast error:', err);
     await bot.sendMessage(chatId, 'לא הצלחנו לשלוח את ההודעה כרגע. נסה שוב בעוד רגע.').catch(() => {});
+  }
+});
+
+bot.onText(/^\/new(?:@\w+)?$/, async (msg) => {
+  const chatId = msg.chat.id;
+  const requesterId = String(msg.from.id);
+
+  try {
+    await bootstrapAdmins();
+
+    const isAdmin = await isAdminByTelegramId(requesterId);
+    if (!isAdmin) {
+      await bot.sendMessage(chatId, 'אין לך הרשאה לבצע את הפעולה הזו.');
+      return;
+    }
+
+    const result = await sendDroneUpdateBroadcast();
+    await bot.sendMessage(
+      chatId,
+      `עדכון הרחפן נשלח ל-${result.sent} משתמשים.\nנכשלו ${result.failed} שליחות מתוך ${result.total}.`
+    );
+  } catch (err) {
+    console.error('/new error:', err);
+    await bot.sendMessage(chatId, 'לא הצלחנו לשלוח את עדכון הרחפן כרגע. נסה שוב בעוד רגע.').catch(() => {});
   }
 });
 
@@ -1236,6 +1333,39 @@ bot.on('callback_query', async (query) => {
   const telegramId = String(query.from.id);
 
   try {
+    if (data.startsWith('favorite_color_')) {
+      const colorKey = data.replace('favorite_color_', '');
+      const colorOption = getFavoriteColorOption(colorKey);
+
+      if (!FAVORITE_COLOR_KEYS.has(colorKey) || !colorOption) {
+        await bot.answerCallbackQuery(query.id, { text: 'צבע לא תקין' });
+        return;
+      }
+
+      const result = await run(
+        `
+        UPDATE users
+        SET favorite_color = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE telegram_id = ?
+          AND (registration_status = 'approved' OR role = 'admin')
+        `,
+        [colorKey, telegramId]
+      );
+
+      if (!result?.changes) {
+        await bot.answerCallbackQuery(query.id, {
+          text: 'צריך קודם להיות רשום ומאושר במערכת.',
+        });
+        return;
+      }
+
+      await bot.answerCallbackQuery(query.id, {
+        text: `הצבע נשמר: ${colorOption.label}`,
+      });
+      return;
+    }
+
     // approval flow
     if (data.startsWith('approve_user_')) {
       const isAdmin = await isAdminByTelegramId(telegramId);

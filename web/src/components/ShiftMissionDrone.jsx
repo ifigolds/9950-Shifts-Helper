@@ -1,7 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './ShiftMissionDrone.css'
 
-const LOFI_TRACK_SRC = '/audio/lofi-jazz-loop.wav'
+const LOFI_TRACK_SRC = '/audio/good-night-lofi.mp3'
+const DEFAULT_DRONE_COLOR = 'sky'
+
+const DRONE_COLOR_THEMES = {
+  sky: {
+    primary: '#7dd3fc',
+    secondary: '#0ea5e9',
+    route: '#38bdf8',
+    glow: 'rgba(14, 165, 233, 0.38)',
+  },
+  mint: {
+    primary: '#6ee7b7',
+    secondary: '#10b981',
+    route: '#34d399',
+    glow: 'rgba(16, 185, 129, 0.38)',
+  },
+  amber: {
+    primary: '#fde68a',
+    secondary: '#f59e0b',
+    route: '#fbbf24',
+    glow: 'rgba(245, 158, 11, 0.4)',
+  },
+  rose: {
+    primary: '#fda4af',
+    secondary: '#e11d48',
+    route: '#fb7185',
+    glow: 'rgba(225, 29, 72, 0.36)',
+  },
+  violet: {
+    primary: '#c4b5fd',
+    secondary: '#7c3aed',
+    route: '#a78bfa',
+    glow: 'rgba(124, 58, 237, 0.38)',
+  },
+}
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
@@ -57,6 +91,16 @@ function getPeopleNames(shift, personName) {
     .filter(Boolean)
 }
 
+function getDroneTheme(shift, currentUserId) {
+  const people = shift?.people || []
+  const currentPerson = currentUserId
+    ? people.find((person) => String(person.user_id) === String(currentUserId))
+    : null
+  const colorKey = currentPerson?.favorite_color || people[0]?.favorite_color || DEFAULT_DRONE_COLOR
+
+  return DRONE_COLOR_THEMES[colorKey] || DRONE_COLOR_THEMES[DEFAULT_DRONE_COLOR]
+}
+
 function DroneSvg({ compact = false }) {
   return (
     <div className={`mission-drone ${compact ? 'mission-drone-compact' : ''}`} aria-hidden="true">
@@ -73,7 +117,7 @@ function DroneSvg({ compact = false }) {
   )
 }
 
-export default function ShiftMissionDrone({ shift, personName, compact = false, onOpen }) {
+export default function ShiftMissionDrone({ shift, personName, currentUserId, compact = false, onOpen }) {
   const missionRef = useRef(null)
   const audioRef = useRef(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -83,6 +127,7 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
   const serverMountedAtRef = useRef(Number.isFinite(serverNowMs) ? serverNowMs : Date.now())
   const [nowMs, setNowMs] = useState(serverMountedAtRef.current)
   const peopleNames = useMemo(() => getPeopleNames(shift, personName), [shift, personName])
+  const droneTheme = useMemo(() => getDroneTheme(shift, currentUserId), [shift, currentUserId])
 
   useEffect(() => {
     const nextServerNowMs = Date.parse(shift?.timing?.now_iso || '')
@@ -212,6 +257,10 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
     '--mission-progress': metrics.progress,
     '--drone-left': droneLeft,
     '--target-pulse': targetPulse,
+    '--drone-primary': droneTheme.primary,
+    '--drone-secondary': droneTheme.secondary,
+    '--drone-route': droneTheme.route,
+    '--drone-glow': droneTheme.glow,
   }
 
   const content = (

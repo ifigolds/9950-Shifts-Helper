@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
     phone TEXT,
     rank TEXT,
     service_type TEXT,
+    favorite_color TEXT DEFAULT '',
     role TEXT DEFAULT 'user',
     registration_status TEXT DEFAULT 'not_registered',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

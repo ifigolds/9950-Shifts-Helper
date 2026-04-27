@@ -48,6 +48,7 @@ async function getActiveNowAssignments(now = new Date()) {
       u.first_name,
       u.last_name,
       u.username,
+      u.favorite_color,
       s.id AS shift_id,
       s.title,
       s.shift_date,
@@ -88,6 +89,7 @@ async function getActiveNowAssignments(now = new Date()) {
       first_name: row.first_name,
       last_name: row.last_name,
       username: row.username,
+      favorite_color: row.favorite_color,
     });
   });
 

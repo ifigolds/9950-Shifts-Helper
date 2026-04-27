@@ -1,6 +1,6 @@
 import ShiftMissionDrone from './ShiftMissionDrone'
 
-export default function ActiveNowCard({ activeNow, personName, onOpenMission }) {
+export default function ActiveNowCard({ activeNow, personName, currentUserId, onOpenMission }) {
   const primaryShift = activeNow[0] || null
 
   return (
@@ -23,6 +23,7 @@ export default function ActiveNowCard({ activeNow, personName, onOpenMission }) 
               compact
               shift={primaryShift}
               personName={personName}
+              currentUserId={currentUserId}
               onOpen={() => onOpenMission(primaryShift)}
             />
           ) : null}

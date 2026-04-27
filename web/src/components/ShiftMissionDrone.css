@@ -214,9 +214,9 @@
 .route-line-complete {
   right: auto;
   width: calc(var(--mission-progress) * 100%);
-  background: linear-gradient(90deg, #38bdf8, #5eead4, #facc15);
+  background: linear-gradient(90deg, var(--drone-route, #38bdf8), #5eead4, #facc15);
   box-shadow:
-    0 0 18px rgba(94, 234, 212, 0.68),
+    0 0 18px var(--drone-glow, rgba(94, 234, 212, 0.68)),
     0 0 34px rgba(56, 189, 248, 0.26);
 }
 
@@ -359,8 +359,8 @@
 .drone-body {
   inset: 30% 32%;
   border-radius: 18px;
-  background: linear-gradient(135deg, #f8fafc, #7dd3fc 48%, #0ea5e9);
-  box-shadow: 0 8px 22px rgba(14, 165, 233, 0.34);
+  background: linear-gradient(135deg, #f8fafc, var(--drone-primary, #7dd3fc) 48%, var(--drone-secondary, #0ea5e9));
+  box-shadow: 0 8px 22px var(--drone-glow, rgba(14, 165, 233, 0.34));
 }
 
 .drone-camera {
@@ -397,7 +397,7 @@
   height: 26px;
   border-radius: 50%;
   border: 2px solid rgba(226, 246, 255, 0.7);
-  box-shadow: 0 0 18px rgba(125, 211, 252, 0.44);
+  box-shadow: 0 0 18px var(--drone-glow, rgba(125, 211, 252, 0.44));
   animation: propSpin 0.38s linear infinite;
 }
 
@@ -462,7 +462,7 @@
   font-size: clamp(22px, 4vw, 42px);
   line-height: 1.05;
   letter-spacing: -0.04em;
-  text-shadow: 0 0 24px rgba(14, 165, 233, 0.36);
+  text-shadow: 0 0 24px var(--drone-glow, rgba(14, 165, 233, 0.36));
 }
 
 .shift-mission-compact .mission-hud strong {

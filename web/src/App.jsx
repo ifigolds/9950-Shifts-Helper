@@ -1801,6 +1801,7 @@ export default function App() {
       <ActiveNowCard
         activeNow={activeNow}
         personName={personName}
+        currentUserId={profile?.user?.id}
         onOpenMission={(shift) => setOverlay({ type: 'fpv-mission', shift })}
       />
     )
@@ -2138,6 +2139,7 @@ export default function App() {
                 <ShiftMissionDrone
                   shift={overlay.shift}
                   personName={personName}
+                  currentUserId={profile?.user?.id}
                 />
 
                 <div className="overlay-actions-bar">

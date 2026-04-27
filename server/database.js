@@ -231,7 +231,13 @@ const migrations = [
          WHERE duplicate_rank = 1
        )`,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_shift_assignments_shift_user
-       ON shift_assignments (shift_id, user_id)`,
+      ON shift_assignments (shift_id, user_id)`,
+    ],
+  },
+  {
+    id: '2026-04-27-add-users-favorite-color-column',
+    statements: [
+      `ALTER TABLE users ADD COLUMN favorite_color TEXT DEFAULT ''`,
     ],
   },
 ];
