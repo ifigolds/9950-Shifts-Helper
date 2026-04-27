@@ -871,6 +871,54 @@ router.delete('/shifts/:shiftId/assignments/:userId', authMiddleware, adminMiddl
   }
 });
 
+router.patch('/shifts/:shiftId/assignments/:userId/status', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const shift = await getShiftOrThrow(req.params.shiftId);
+    const userId = Number(req.params.userId);
+    const status = String(req.body?.status || '').trim();
+    const comment = String(req.body?.comment || '').trim();
+
+    if (!userId) {
+      return res.status(400).json({ error: 'משתמש לא תקין' });
+    }
+
+    if (!['pending', 'yes', 'maybe', 'no'].includes(status)) {
+      return res.status(400).json({ error: 'סטטוס לא תקין' });
+    }
+
+    const assignment = await getAsync(
+      `
+      SELECT sa.id
+      FROM shift_assignments sa
+      WHERE sa.shift_id = ?
+        AND sa.user_id = ?
+      `,
+      [shift.id, userId]
+    );
+
+    if (!assignment) {
+      return res.status(404).json({ error: 'המשתמש לא משויך למשמרת הזאת' });
+    }
+
+    await runAsync(
+      `
+      UPDATE shift_assignments
+      SET
+        status = ?,
+        comment = ?,
+        responded_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+      WHERE shift_id = ?
+        AND user_id = ?
+      `,
+      [status, comment, status, shift.id, userId]
+    );
+
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
 router.post('/restore-known-users', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await restoreKnownUsers();
