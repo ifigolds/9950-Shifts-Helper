@@ -133,6 +133,7 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
     }
 
     window.clearInterval(currentAudio.intervalId)
+    currentAudio.timeoutIds?.forEach((timeoutId) => window.clearTimeout(timeoutId))
     currentAudio.nodes.forEach((node) => {
       try {
         node.stop?.()
@@ -159,13 +160,18 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
     const filter = context.createBiquadFilter()
     const delay = context.createDelay()
     const feedback = context.createGain()
+    const noiseGain = context.createGain()
+    const bassGain = context.createGain()
     const nodes = [master, filter, delay, feedback]
+    const timeoutIds = []
 
-    master.gain.value = 0.035
+    master.gain.value = 0.048
     filter.type = 'lowpass'
-    filter.frequency.value = 1150
-    delay.delayTime.value = 0.28
-    feedback.gain.value = 0.16
+    filter.frequency.value = 1450
+    delay.delayTime.value = 0.34
+    feedback.gain.value = 0.18
+    noiseGain.gain.value = 0.012
+    bassGain.gain.value = 0.18
 
     master.connect(filter)
     filter.connect(context.destination)
@@ -173,44 +179,95 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
     delay.connect(feedback)
     feedback.connect(delay)
     delay.connect(context.destination)
+    bassGain.connect(master)
+    noiseGain.connect(filter)
 
+    const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate)
+    const noiseData = noiseBuffer.getChannelData(0)
+    for (let index = 0; index < noiseData.length; index += 1) {
+      noiseData[index] = (Math.random() * 2 - 1) * 0.18
+    }
+
+    const vinylNoise = context.createBufferSource()
+    vinylNoise.buffer = noiseBuffer
+    vinylNoise.loop = true
+    vinylNoise.connect(noiseGain)
+    vinylNoise.start()
+    nodes.push(noiseGain, bassGain, vinylNoise)
+
+    // Warm seventh/ninth voicings with a small swing offset: simple, jazzy and unobtrusive.
     const progression = [
-      [220, 261.63, 329.63],
-      [196, 246.94, 293.66],
-      [174.61, 220, 261.63],
-      [185, 233.08, 277.18],
+      { bass: 110, chord: [261.63, 329.63, 392, 493.88] },
+      { bass: 98, chord: [246.94, 293.66, 369.99, 440] },
+      { bass: 87.31, chord: [220, 261.63, 329.63, 392] },
+      { bass: 92.5, chord: [233.08, 277.18, 349.23, 415.3] },
     ]
     let step = 0
 
-    function playChord() {
-      const now = context.currentTime
+    function playTone(frequency, startAt, duration, type, gainNode, peak = 0.22) {
+      const oscillator = context.createOscillator()
+      const voiceGain = context.createGain()
+
+      oscillator.type = type
+      oscillator.frequency.setValueAtTime(frequency, startAt)
+      oscillator.detune.setValueAtTime((Math.random() - 0.5) * 5, startAt)
+      voiceGain.gain.setValueAtTime(0.0001, startAt)
+      voiceGain.gain.linearRampToValueAtTime(peak, startAt + 0.08)
+      voiceGain.gain.exponentialRampToValueAtTime(0.001, startAt + duration)
+
+      oscillator.connect(voiceGain)
+      voiceGain.connect(gainNode)
+      oscillator.start(startAt)
+      oscillator.stop(startAt + duration + 0.08)
+      nodes.push(oscillator, voiceGain)
+    }
+
+    function playDustTap(startAt, accent = 1) {
+      const tap = context.createBufferSource()
+      const tapGain = context.createGain()
+      const tapBuffer = context.createBuffer(1, Math.floor(context.sampleRate * 0.04), context.sampleRate)
+      const tapData = tapBuffer.getChannelData(0)
+
+      for (let index = 0; index < tapData.length; index += 1) {
+        tapData[index] = (Math.random() * 2 - 1) * (1 - index / tapData.length)
+      }
+
+      tap.buffer = tapBuffer
+      tapGain.gain.setValueAtTime(0.018 * accent, startAt)
+      tapGain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.05)
+      tap.connect(tapGain)
+      tapGain.connect(filter)
+      tap.start(startAt)
+      tap.stop(startAt + 0.06)
+      nodes.push(tap, tapGain)
+    }
+
+    function scheduleBar() {
+      const barStart = context.currentTime + 0.02
       const chord = progression[step % progression.length]
       step += 1
 
-      chord.forEach((frequency, index) => {
-        const oscillator = context.createOscillator()
-        const voiceGain = context.createGain()
-
-        oscillator.type = index === 0 ? 'triangle' : 'sine'
-        oscillator.frequency.value = frequency
-        voiceGain.gain.setValueAtTime(0, now)
-        voiceGain.gain.linearRampToValueAtTime(0.32, now + 0.08)
-        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 2.3)
-
-        oscillator.connect(voiceGain)
-        voiceGain.connect(master)
-        oscillator.start(now)
-        oscillator.stop(now + 2.4)
-        nodes.push(oscillator, voiceGain)
+      chord.chord.forEach((frequency, index) => {
+        playTone(frequency, barStart + index * 0.012, 2.75, index === 0 ? 'triangle' : 'sine', master, 0.18)
       })
+
+      playTone(chord.bass, barStart, 0.82, 'triangle', bassGain, 0.28)
+      playTone(chord.bass * 1.5, barStart + 1.62, 0.56, 'sine', bassGain, 0.16)
+      playDustTap(barStart + 0.02, 1.2)
+      playDustTap(barStart + 0.82, 0.55)
+      playDustTap(barStart + 1.62, 0.9)
+      playDustTap(barStart + 2.42, 0.5)
     }
 
-    playChord()
-    const intervalId = window.setInterval(playChord, 2400)
+    scheduleBar()
+    const swingStartId = window.setTimeout(scheduleBar, 3200)
+    timeoutIds.push(swingStartId)
+    const intervalId = window.setInterval(scheduleBar, 6400)
 
     audioRef.current = {
       context,
       intervalId,
+      timeoutIds,
       nodes,
     }
     setIsLofiPlaying(true)
