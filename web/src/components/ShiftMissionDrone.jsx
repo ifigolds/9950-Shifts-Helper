@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './ShiftMissionDrone.css'
 
-const TOTAL_DISTANCE_KM = 8
-const MIN_BATTERY = 18
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
@@ -18,20 +15,12 @@ function formatDuration(ms) {
   return `${hours}h ${String(minutes).padStart(2, '0')}m`
 }
 
-function getBatteryPercent(progress) {
-  return Math.round(100 - (100 - MIN_BATTERY) * clamp(progress, 0, 1))
-}
-
-function getDistanceKm(progress) {
-  return Math.max(0, TOTAL_DISTANCE_KM * (1 - clamp(progress, 0, 1))).toFixed(1)
-}
-
 function getMissionPhase(progress) {
-  if (progress >= 1) return 'LANDED'
-  if (progress >= 0.75) return 'TARGET LOCKED'
-  if (progress >= 0.5) return 'FINAL VECTOR'
-  if (progress >= 0.25) return 'CRUISE'
-  return 'TAKEOFF'
+  if (progress >= 1) return 'המשמרת הושלמה'
+  if (progress >= 0.75) return 'לקראת סיום'
+  if (progress >= 0.5) return 'עברנו את האמצע'
+  if (progress >= 0.25) return 'בטיסה יציבה'
+  return 'תחילת מסלול'
 }
 
 function getMissionMetrics(shift, clientNowMs) {
@@ -114,8 +103,6 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
 
   const metrics = getMissionMetrics(shift, nowMs)
   const progressPercent = Math.round(metrics.progress * 100)
-  const battery = getBatteryPercent(metrics.progress)
-  const distance = getDistanceKm(metrics.progress)
   const phase = getMissionPhase(metrics.progress)
   const droneLeft = compact
     ? `${clamp(14 + metrics.progress * 58, 14, 72)}%`
@@ -144,6 +131,17 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
         <span />
       </div>
 
+      <div className="mission-route" aria-hidden="true">
+        <span className="route-line route-line-total" />
+        <span className="route-line route-line-complete" />
+        <span className="route-dot route-start" />
+        <span className="route-dot route-mid" />
+        <span className="route-dot route-end" />
+        <span className="route-label route-label-start">תחילת המשמרת</span>
+        <span className="route-label route-label-now">כאן הדрон עכשיו</span>
+        <span className="route-label route-label-end">סיום</span>
+      </div>
+
       <div className="mission-drone-track">
         <DroneSvg compact={compact} />
       </div>
@@ -151,33 +149,29 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
       <div className="mission-hud">
         <div className="mission-hud-top">
           <div>
-            <span className="mission-kicker">FPV SHIFT MISSION</span>
-            <strong>{peopleNames.join(' · ') || 'No pilot assigned'}</strong>
+            <span className="mission-kicker">משימת FPV למשמרת</span>
+            <strong>{peopleNames.join(' · ') || 'אין צוות משויך'}</strong>
           </div>
-          <span className={`mission-status ${phase === 'LANDED' ? 'complete' : ''}`}>{phase}</span>
+          <span className={`mission-status ${metrics.progress >= 1 ? 'complete' : ''}`}>{phase}</span>
         </div>
 
         {!compact ? (
           <div className="mission-hud-grid">
-            <span>ELAPSED <strong>{formatDuration(metrics.elapsedMs)}</strong></span>
-            <span>ETA <strong>{formatDuration(metrics.remainingMs)}</strong></span>
-            <span>MISSION <strong>{progressPercent}%</strong></span>
-            <span>BATTERY <strong>{battery}%</strong></span>
-            <span>DISTANCE <strong>{distance} KM</strong></span>
-            <span>SIGNAL <strong>{metrics.progress >= 0.75 ? 'LOCKED' : 'SEARCHING'}</strong></span>
+            <span>זמן שעבר <strong>{formatDuration(metrics.elapsedMs)}</strong></span>
+            <span>זמן שנשאר <strong>{formatDuration(metrics.remainingMs)}</strong></span>
+            <span>מסלול שהושלם <strong>{progressPercent}%</strong></span>
           </div>
         ) : (
           <div className="mission-compact-meta">
-            <span>{progressPercent}%</span>
-            <span>{distance} km</span>
-            <span>{battery}%</span>
+            <span>{progressPercent}% מהמסלול</span>
+            <span>{formatDuration(metrics.elapsedMs)} עברו</span>
           </div>
         )}
       </div>
 
       {metrics.progress >= 1 ? (
         <div className="mission-complete">
-          <span>MISSION COMPLETE</span>
+          <span>המשימה הושלמה</span>
         </div>
       ) : null}
     </>

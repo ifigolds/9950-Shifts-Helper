@@ -2089,9 +2089,9 @@ export default function App() {
               <>
                 <div className="overlay-header">
                   <div>
-                    <div className="eyebrow">FPV SHIFT MISSION</div>
+                    <div className="eyebrow">משימת FPV למשמרת</div>
                     <div className="overlay-title">
-                      {overlay.shift?.people?.map((person) => personName(person)).join(' · ') || 'Mission crew'}
+                      {overlay.shift?.people?.map((person) => personName(person)).join(' · ') || 'אין צוות משויך'}
                     </div>
                     <div className="subtitle">
                       {overlay.shift?.shift_date} · {overlay.shift?.start_time} - {overlay.shift?.end_time}
