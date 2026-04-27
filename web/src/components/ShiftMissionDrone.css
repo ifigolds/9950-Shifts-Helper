@@ -26,12 +26,59 @@
   border-radius: 28px;
 }
 
+.shift-mission-expanded,
+.shift-mission-full:fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+  border: 0;
+}
+
+.shift-mission-full:fullscreen {
+  background:
+    radial-gradient(circle at 82% 45%, rgba(20, 184, 166, 0.18), transparent 24%),
+    linear-gradient(135deg, #071526 0%, #0d2740 44%, #14273a 100%);
+}
+
 .mission-sky,
 .mission-drone-track,
 .mission-hud,
 .mission-complete {
   position: absolute;
   inset: 0;
+}
+
+.mission-controls {
+  position: absolute;
+  z-index: 8;
+  left: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.mission-controls button {
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(186, 230, 253, 0.24);
+  color: #e8f8ff;
+  background: rgba(3, 7, 18, 0.46);
+  box-shadow: 0 10px 24px rgba(3, 7, 18, 0.22);
+  font-size: 12px;
+  font-weight: 900;
+  backdrop-filter: blur(12px);
+}
+
+.mission-controls button:hover {
+  border-color: rgba(94, 234, 212, 0.5);
+  background: rgba(8, 47, 73, 0.62);
 }
 
 .mission-sky {

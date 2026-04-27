@@ -72,6 +72,10 @@ function DroneSvg({ compact = false }) {
 }
 
 export default function ShiftMissionDrone({ shift, personName, compact = false, onOpen }) {
+  const missionRef = useRef(null)
+  const audioRef = useRef(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isLofiPlaying, setIsLofiPlaying] = useState(false)
   const serverNowMs = Date.parse(shift?.timing?.now_iso || '')
   const clientMountedAtRef = useRef(Date.now())
   const serverMountedAtRef = useRef(Number.isFinite(serverNowMs) ? serverNowMs : Date.now())
@@ -100,6 +104,156 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
       window.cancelAnimationFrame(frameId)
     }
   }, [])
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === missionRef.current)
+    }
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    stopLofi(false)
+  }, [])
+
+  function stopLofi(updateState = true) {
+    const currentAudio = audioRef.current
+    audioRef.current = null
+    if (updateState) {
+      setIsLofiPlaying(false)
+    }
+
+    if (!currentAudio) {
+      return
+    }
+
+    window.clearInterval(currentAudio.intervalId)
+    currentAudio.nodes.forEach((node) => {
+      try {
+        node.stop?.()
+      } catch {
+        // Oscillators may already be stopped.
+      }
+      node.disconnect?.()
+    })
+    currentAudio.context.close?.()
+  }
+
+  function playLofi() {
+    if (audioRef.current) {
+      return
+    }
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextClass) {
+      return
+    }
+
+    const context = new AudioContextClass()
+    const master = context.createGain()
+    const filter = context.createBiquadFilter()
+    const delay = context.createDelay()
+    const feedback = context.createGain()
+    const nodes = [master, filter, delay, feedback]
+
+    master.gain.value = 0.035
+    filter.type = 'lowpass'
+    filter.frequency.value = 1150
+    delay.delayTime.value = 0.28
+    feedback.gain.value = 0.16
+
+    master.connect(filter)
+    filter.connect(context.destination)
+    filter.connect(delay)
+    delay.connect(feedback)
+    feedback.connect(delay)
+    delay.connect(context.destination)
+
+    const progression = [
+      [220, 261.63, 329.63],
+      [196, 246.94, 293.66],
+      [174.61, 220, 261.63],
+      [185, 233.08, 277.18],
+    ]
+    let step = 0
+
+    function playChord() {
+      const now = context.currentTime
+      const chord = progression[step % progression.length]
+      step += 1
+
+      chord.forEach((frequency, index) => {
+        const oscillator = context.createOscillator()
+        const voiceGain = context.createGain()
+
+        oscillator.type = index === 0 ? 'triangle' : 'sine'
+        oscillator.frequency.value = frequency
+        voiceGain.gain.setValueAtTime(0, now)
+        voiceGain.gain.linearRampToValueAtTime(0.32, now + 0.08)
+        voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 2.3)
+
+        oscillator.connect(voiceGain)
+        voiceGain.connect(master)
+        oscillator.start(now)
+        oscillator.stop(now + 2.4)
+        nodes.push(oscillator, voiceGain)
+      })
+    }
+
+    playChord()
+    const intervalId = window.setInterval(playChord, 2400)
+
+    audioRef.current = {
+      context,
+      intervalId,
+      nodes,
+    }
+    setIsLofiPlaying(true)
+  }
+
+  async function enterFullscreenWithLofi() {
+    if (compact) {
+      onOpen?.()
+      return
+    }
+
+    playLofi()
+    setIsFullscreen(true)
+
+    try {
+      if (missionRef.current?.requestFullscreen) {
+        await missionRef.current.requestFullscreen()
+      }
+    } catch {
+      setIsFullscreen(true)
+    }
+  }
+
+  async function exitFullscreen() {
+    setIsFullscreen(false)
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      }
+    } catch {
+      setIsFullscreen(false)
+    }
+  }
+
+  function toggleLofi() {
+    if (isLofiPlaying) {
+      stopLofi()
+      return
+    }
+
+    playLofi()
+  }
 
   const metrics = getMissionMetrics(shift, nowMs)
   const progressPercent = Math.round(metrics.progress * 100)
@@ -191,8 +345,23 @@ export default function ShiftMissionDrone({ shift, personName, compact = false, 
   }
 
   return (
-    <div className="shift-mission shift-mission-full" style={rootStyle}>
+    <div
+      ref={missionRef}
+      className={`shift-mission shift-mission-full ${isFullscreen ? 'shift-mission-expanded' : ''}`}
+      style={rootStyle}
+    >
       {content}
+      <div className="mission-controls">
+        <button type="button" onClick={enterFullscreenWithLofi}>
+          מסך מלא + לופיי
+        </button>
+        <button type="button" onClick={toggleLofi}>
+          {isLofiPlaying ? 'עצור לופיי' : 'נגן לופיי'}
+        </button>
+        {isFullscreen ? (
+          <button type="button" onClick={exitFullscreen}>יציאה</button>
+        ) : null}
+      </div>
     </div>
   )
 }
